@@ -5,7 +5,6 @@ import (
 	"github.com/jedib0t/go-pretty/table"
 	"github.com/remko/go-mkvparse"
 	"os"
-	"strings"
 	"time"
 )
 
@@ -104,14 +103,14 @@ func (p *MyParser) HandleBinary(id mkvparse.ElementID, value []byte, info mkvpar
 }
 
 func print(p MyParser) {
-	t := table.NewWriter()
-	t.SetOutputMirror(os.Stdout)
-	t.AppendHeader(table.Row{"Number", "UID", "Name", "Language", "Default"})
+	tab := table.NewWriter()
+	tab.SetOutputMirror(os.Stdout)
+	tab.AppendHeader(table.Row{"Number", "UID", "Name", "Language", "Codec", "Default"})
 
-	for _, track := range p.tracks {
-		t.AppendRow([]interface{}{track.number, track.uid, track.name, track.language, track.flagDefault})
+	for _, t := range p.tracks {
+		tab.AppendRow([]interface{}{t.number, t.uid, t.name, t.language, t.CodecID, t.flagDefault})
 	}
-	t.Render()
+	tab.Render()
 }
 
 func main() {
@@ -122,8 +121,4 @@ func main() {
 		os.Exit(-1)
 	}
 	print(handler)
-}
-
-func indent(n int) string {
-	return strings.Repeat("  ", n)
 }
