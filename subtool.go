@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/jedib0t/go-pretty/table"
 	"github.com/remko/go-mkvparse"
+	"gopkg.in/alecthomas/kingpin.v2"
 	"os"
 	"time"
 )
@@ -40,7 +41,6 @@ func (p *MyParser) HandleMasterBegin(id mkvparse.ElementID, info mkvparse.Elemen
 func (p *MyParser) HandleMasterEnd(id mkvparse.ElementID, info mkvparse.ElementInfo) error {
 	// If we're inside a track and found another track start, process the current one.
 	if id == mkvparse.TrackEntryElement {
-		//fmt.Printf("Got track %+v\n", p.track)
 		p.tracks = append(p.tracks, p.track)
 		p.track = trackinfo{}
 	}
@@ -77,28 +77,18 @@ func (p *MyParser) HandleInteger(id mkvparse.ElementID, value int64, info mkvpar
 			p.track.flagDefault = true
 		}
 	}
-	//fmt.Printf("%s- %v: %v\n", indent(info.Level), mkvparse.NameForElementID(id), value)
 	return nil
 }
 
 func (p *MyParser) HandleFloat(id mkvparse.ElementID, value float64, info mkvparse.ElementInfo) error {
-	//fmt.Printf("%s- %v: %v\n", indent(info.Level), mkvparse.NameForElementID(id), value)
 	return nil
 }
 
 func (p *MyParser) HandleDate(id mkvparse.ElementID, value time.Time, info mkvparse.ElementInfo) error {
-	//fmt.Printf("%s- %v: %v\n", indent(info.Level), mkvparse.NameForElementID(id), value)
 	return nil
 }
 
 func (p *MyParser) HandleBinary(id mkvparse.ElementID, value []byte, info mkvparse.ElementInfo) error {
-	/*
-		if id == mkvparse.SeekIDElement {
-			fmt.Printf("%s- %v: %x\n", indent(info.Level), mkvparse.NameForElementID(id), value)
-		} else {
-			fmt.Printf("%s- %v: <binary>\n", indent(info.Level), mkvparse.NameForElementID(id))
-		}
-	*/
 	return nil
 }
 
@@ -113,12 +103,26 @@ func print(p MyParser) {
 	tab.Render()
 }
 
-func main() {
+// show lists all tracks in a file.
+func show(fname string) {
 	handler := MyParser{}
-	err := mkvparse.ParsePath(os.Args[1], &handler)
+	err := mkvparse.ParsePath(fname, &handler)
 	if err != nil {
 		fmt.Printf("%v", err)
 		os.Exit(-1)
 	}
 	print(handler)
+}
+
+func main() {
+	var (
+		app = kingpin.New("subtool", "Subtitle operations on matroska containers")
+		//debug = app.Flag("debug", "Enable debug mode.").Bool()
+		showCmd = app.Command("show", "Show Information about a file.")
+		mkvfile = showCmd.Arg("mkvfile", "Filename").Required().String()
+	)
+	switch kingpin.MustParse(app.Parse(os.Args[1:])) {
+	case showCmd.FullCommand():
+		show(*mkvfile)
+	}
 }
