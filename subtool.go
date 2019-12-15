@@ -5,14 +5,27 @@ import (
 	"github.com/jedib0t/go-pretty/table"
 	"github.com/remko/go-mkvparse"
 	"gopkg.in/alecthomas/kingpin.v2"
+	"log"
 	"os"
 	"time"
+)
+
+// Track Types. See https://www.matroska.org/technical/specs/index.html
+const (
+	typeVideo    = 1
+	typeAudio    = 2
+	typeComplex  = 3
+	typeLogo     = 16
+	typeSubtitle = 17
+	typeButtons  = 18
+	typeControl  = 32
 )
 
 type trackinfo struct {
 	number      int64
 	uid         int64
 	name        string
+	tracktype   int64
 	language    string
 	flagDefault bool
 	CodecID     string
@@ -67,11 +80,14 @@ func (p *MyParser) HandleInteger(id mkvparse.ElementID, value int64, info mkvpar
 	if !p.inTrack {
 		return nil
 	}
+	//fmt.Printf("%v: %v\n", mkvparse.NameForElementID(id), value)
 	switch id {
 	case mkvparse.TrackNumberElement:
 		p.track.number = value
 	case mkvparse.TrackUIDElement:
 		p.track.uid = value
+	case mkvparse.TrackTypeElement:
+		p.track.tracktype = value
 	case mkvparse.FlagDefaultElement:
 		if value != 0 {
 			p.track.flagDefault = true
@@ -92,37 +108,84 @@ func (p *MyParser) HandleBinary(id mkvparse.ElementID, value []byte, info mkvpar
 	return nil
 }
 
-func print(p MyParser) {
+// show lists all tracks in a file.
+func show(p MyParser) {
 	tab := table.NewWriter()
 	tab.SetOutputMirror(os.Stdout)
-	tab.AppendHeader(table.Row{"Number", "UID", "Name", "Language", "Codec", "Default"})
+	tab.AppendHeader(table.Row{"Number", "UID", "Type", "Name", "Language", "Codec", "Default"})
 
 	for _, t := range p.tracks {
-		tab.AppendRow([]interface{}{t.number, t.uid, t.name, t.language, t.CodecID, t.flagDefault})
+		tab.AppendRow([]interface{}{t.number, t.uid, t.tracktype, t.name, t.language, t.CodecID, t.flagDefault})
 	}
 	tab.Render()
 }
 
-// show lists all tracks in a file.
-func show(fname string) {
-	handler := MyParser{}
-	err := mkvparse.ParsePath(fname, &handler)
-	if err != nil {
-		fmt.Printf("%v", err)
-		os.Exit(-1)
+// setdefault resets flagDefault on all subtitle tracks and sets it on the chosen track UID.
+func setdefault(mkvfile string, p MyParser, trackUID int64, cmd runner) error {
+	command := []string{
+		"mkvpropedit",
+		mkvfile,
 	}
-	print(handler)
+
+	for _, t := range p.tracks {
+		if t.tracktype == typeSubtitle {
+			command = append(command, "--edit", fmt.Sprintf("track:=%d", t.uid), "--set", "flag-default=0")
+		}
+	}
+
+	if err := cmd.run(command[0], command[1:]...); err != nil {
+		return err
+	}
+	return adddefault(mkvfile, trackUID, cmd)
+}
+
+// adddefault adds the default flag to a given track UID.
+func adddefault(mkvfile string, trackUID int64, cmd runner) error {
+	return cmd.run("mkvpropedit", mkvfile, "--edit", fmt.Sprintf("track:=%d", trackUID), "--set", "flag-default=1")
 }
 
 func main() {
 	var (
-		app = kingpin.New("subtool", "Subtitle operations on matroska containers")
+		app     = kingpin.New("subtool", "Subtitle operations on matroska containers")
+		mkvfile = app.Flag("file", "Matroska input file").Short('f').Required().String()
+		dryrun  = app.Flag("dry-run", "Dry-run mode (only show commands)").Short('n').Bool()
+
 		//debug = app.Flag("debug", "Enable debug mode.").Bool()
+		// show
 		showCmd = app.Command("show", "Show Information about a file.")
-		mkvfile = showCmd.Arg("mkvfile", "Filename").Required().String()
+
+		// setdefault
+		setDefaultCmd = app.Command("setdefault", "Set default subtitle tag")
+		trackUID      = setDefaultCmd.Arg("trackUID", "Track UID to set as default").Required().Int64()
+
+		// Command runners.
+		runCmd     runCommand
+		fakeRunCmd fakeRunCommand
+		run        runner
 	)
-	switch kingpin.MustParse(app.Parse(os.Args[1:])) {
+
+	// Plain logs.
+	log.SetFlags(0)
+
+	k := kingpin.MustParse(app.Parse(os.Args[1:]))
+
+	handler := MyParser{}
+	err := mkvparse.ParsePath(*mkvfile, &handler)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	run = runCmd
+	if *dryrun {
+		run = fakeRunCmd
+	}
+
+	switch k {
 	case showCmd.FullCommand():
-		show(*mkvfile)
+		show(handler)
+	case setDefaultCmd.FullCommand():
+		if err := setdefault(*mkvfile, handler, *trackUID, run); err != nil {
+			log.Fatal(err)
+		}
 	}
 }
