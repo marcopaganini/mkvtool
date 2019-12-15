@@ -144,19 +144,31 @@ func adddefault(mkvfile string, trackUID int64, cmd runner) error {
 	return cmd.run("mkvpropedit", mkvfile, "--edit", fmt.Sprintf("track:=%d", trackUID), "--set", "flag-default=1")
 }
 
+// mustParseFile parses the MKV file and returns a handler, or aborts with an
+// error message in case of problems.
+func mustParseFile(fname string) MyParser {
+	handler := MyParser{}
+	err := mkvparse.ParsePath(fname, &handler)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return handler
+}
+
 func main() {
 	var (
-		app     = kingpin.New("subtool", "Subtitle operations on matroska containers")
-		mkvfile = app.Flag("file", "Matroska input file").Short('f').Required().String()
-		dryrun  = app.Flag("dry-run", "Dry-run mode (only show commands)").Short('n').Bool()
+		app    = kingpin.New("subtool", "Subtitle operations on matroska containers")
+		dryrun = app.Flag("dry-run", "Dry-run mode (only show commands)").Short('n').Bool()
 
 		//debug = app.Flag("debug", "Enable debug mode.").Bool()
 		// show
-		showCmd = app.Command("show", "Show Information about a file.")
+		showCmd  = app.Command("show", "Show Information about a file.")
+		showFile = showCmd.Arg("input-file", "Matroska Input file").Required().String()
 
 		// setdefault
-		setDefaultCmd = app.Command("setdefault", "Set default subtitle tag")
-		trackUID      = setDefaultCmd.Arg("trackUID", "Track UID to set as default").Required().Int64()
+		setDefaultCmd  = app.Command("setdefault", "Set default subtitle tag")
+		setDefaultFile = setDefaultCmd.Arg("input-file", "Matroska Input file").Required().String()
+		trackUID       = setDefaultCmd.Arg("trackUID", "Track UID to set as default").Required().Int64()
 
 		// Command runners.
 		runCmd     runCommand
@@ -169,12 +181,7 @@ func main() {
 
 	k := kingpin.MustParse(app.Parse(os.Args[1:]))
 
-	handler := MyParser{}
-	err := mkvparse.ParsePath(*mkvfile, &handler)
-	if err != nil {
-		log.Fatal(err)
-	}
-
+	// Run will resolve to a print-only version when dry-run is chosen.
 	run = runCmd
 	if *dryrun {
 		run = fakeRunCmd
@@ -182,9 +189,11 @@ func main() {
 
 	switch k {
 	case showCmd.FullCommand():
-		show(handler)
+		h := mustParseFile(*showFile)
+		show(h)
 	case setDefaultCmd.FullCommand():
-		if err := setdefault(*mkvfile, handler, *trackUID, run); err != nil {
+		h := mustParseFile(*setDefaultFile)
+		if err := setdefault(*setDefaultFile, h, *trackUID, run); err != nil {
 			log.Fatal(err)
 		}
 	}
