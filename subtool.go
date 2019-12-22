@@ -44,7 +44,7 @@ func show(p mkvParser) {
 
 	// Commands use track starting at offset zero, hence the subtraction below.
 	for _, t := range p.tracks {
-		tab.AppendRow([]interface{}{t.number - 1, uint64(t.uid), t.tracktype, t.name, t.language, t.CodecID, t.flagDefault})
+		tab.AppendRow([]interface{}{t.number - 1, uint64(t.uid), trackType(t.tracktype), t.name, t.language, t.CodecID, t.flagDefault})
 	}
 	tab.Render()
 }
@@ -127,6 +127,24 @@ func trackInfo(handler mkvParser, track int64) (trackinfo, error) {
 		}
 	}
 	return trackinfo{}, fmt.Errorf("track number %d not found in file %s\n", track, handler.fname)
+}
+
+// trackType returns the string type of the track from the numeric track type value
+// or Unknown(value) if the type is not known.
+func trackType(t int64) string {
+	var ttypes = map[int64]string{
+		typeVideo:    "Video",
+		typeAudio:    "Audio",
+		typeComplex:  "Complex",
+		typeLogo:     "Logo",
+		typeSubtitle: "Subtitle",
+		typeButtons:  "Buttons",
+		typeControl:  "Control",
+	}
+	if v, ok := ttypes[t]; ok {
+		return v
+	}
+	return fmt.Sprintf("Unknown(%d)", t)
 }
 
 func main() {
