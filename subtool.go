@@ -124,7 +124,7 @@ func show(p MyParser) {
 
 	// Commands use track starting at offset zero, hence the subtraction below.
 	for _, t := range p.tracks {
-		tab.AppendRow([]interface{}{t.number - 1, t.uid, t.tracktype, t.name, t.language, t.CodecID, t.flagDefault})
+		tab.AppendRow([]interface{}{t.number - 1, uint64(t.uid), t.tracktype, t.name, t.language, t.CodecID, t.flagDefault})
 	}
 	tab.Render()
 }
