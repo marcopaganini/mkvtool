@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -44,6 +45,11 @@ type fakeRunCommand int
 
 // Fakerunner just logs the commands (dry-run)
 func (x fakeRunCommand) run(name string, args ...string) error {
-	log.Printf("%s %s", name, strings.Join(args, " "))
+	var quoted []string
+
+	for _, a := range args {
+		quoted = append(quoted, strconv.Quote(a))
+	}
+	log.Printf("%q %s", name, strings.Join(quoted, " "))
 	return nil
 }
