@@ -106,8 +106,8 @@ func submux(infile, outfile string, nosubs bool, cmd runner, subs ...trackFileIn
 	}
 	cmdline = append(cmdline, infile)
 
-	for track, sub := range subs {
-		cmdline = append(cmdline, "--language", fmt.Sprintf("%d:%s", track, sub.language))
+	for _, sub := range subs {
+		cmdline = append(cmdline, "--language", fmt.Sprintf("0:%s", sub.language))
 		cmdline = append(cmdline, sub.fname)
 	}
 	return cmd.run(cmdline[0], cmdline[1:]...)
