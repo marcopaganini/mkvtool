@@ -3,12 +3,10 @@ package main
 import (
 	"fmt"
 	"github.com/jedib0t/go-pretty/table"
-	"github.com/remko/go-mkvparse"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"io/ioutil"
 	"log"
 	"os"
-	"time"
 )
 
 // Track Types. See https://www.matroska.org/technical/specs/index.html
@@ -38,86 +36,8 @@ type trackFileInfo struct {
 	fname    string
 }
 
-type MyParser struct {
-	track   trackinfo
-	tracks  []trackinfo
-	fname   string
-	inTrack bool
-}
-
-func (p *MyParser) HandleMasterBegin(id mkvparse.ElementID, info mkvparse.ElementInfo) (bool, error) {
-	//fmt.Printf("==> %v\n", mkvparse.NameForElementID(id))
-	// Skip large elements.
-	if id == mkvparse.CuesElement || id == mkvparse.ClusterElement {
-		return false, nil
-	}
-
-	if id == mkvparse.TrackEntryElement {
-		p.inTrack = true
-	}
-
-	return true, nil
-}
-
-func (p *MyParser) HandleMasterEnd(id mkvparse.ElementID, info mkvparse.ElementInfo) error {
-	// If we're inside a track and found another track start, process the current one.
-	if id == mkvparse.TrackEntryElement {
-		p.tracks = append(p.tracks, p.track)
-		p.track = trackinfo{}
-	}
-	return nil
-}
-
-func (p *MyParser) HandleString(id mkvparse.ElementID, value string, info mkvparse.ElementInfo) error {
-	if !p.inTrack {
-		return nil
-	}
-	switch id {
-	case mkvparse.NameElement:
-		p.track.name = value
-	case mkvparse.LanguageElement:
-		p.track.language = value
-	case mkvparse.CodecIDElement:
-		p.track.CodecID = value
-	}
-	//fmt.Printf("%v: %q\n", mkvparse.NameForElementID(id), value)
-	return nil
-}
-
-func (p *MyParser) HandleInteger(id mkvparse.ElementID, value int64, info mkvparse.ElementInfo) error {
-	if !p.inTrack {
-		return nil
-	}
-	//fmt.Printf("%v: %v\n", mkvparse.NameForElementID(id), value)
-	switch id {
-	case mkvparse.TrackNumberElement:
-		p.track.number = value
-	case mkvparse.TrackUIDElement:
-		p.track.uid = value
-	case mkvparse.TrackTypeElement:
-		p.track.tracktype = value
-	case mkvparse.FlagDefaultElement:
-		if value != 0 {
-			p.track.flagDefault = true
-		}
-	}
-	return nil
-}
-
-func (p *MyParser) HandleFloat(id mkvparse.ElementID, value float64, info mkvparse.ElementInfo) error {
-	return nil
-}
-
-func (p *MyParser) HandleDate(id mkvparse.ElementID, value time.Time, info mkvparse.ElementInfo) error {
-	return nil
-}
-
-func (p *MyParser) HandleBinary(id mkvparse.ElementID, value []byte, info mkvparse.ElementInfo) error {
-	return nil
-}
-
 // show lists all tracks in a file.
-func show(p MyParser) {
+func show(p mkvParser) {
 	tab := table.NewWriter()
 	tab.SetOutputMirror(os.Stdout)
 	tab.AppendHeader(table.Row{"Number", "UID", "Type", "Name", "Language", "Codec", "Default"})
@@ -130,7 +50,7 @@ func show(p MyParser) {
 }
 
 // setdefault resets flagDefault on all subtitle tracks and sets it on the chosen track UID.
-func setdefault(mkvfile string, p MyParser, track int64, cmd runner) error {
+func setdefault(mkvfile string, p mkvParser, track int64, cmd runner) error {
 	command := []string{
 		"mkvpropedit",
 		mkvfile,
@@ -149,7 +69,7 @@ func setdefault(mkvfile string, p MyParser, track int64, cmd runner) error {
 }
 
 // extract extracts a given track into a file.
-func extract(handler MyParser, track int64, cmd runner) (trackFileInfo, error) {
+func extract(handler mkvParser, track int64, cmd runner) (trackFileInfo, error) {
 	// Fetch language for the track. Fail if track does not exist.
 	ti, err := trackInfo(handler, track)
 	if err != nil {
@@ -199,19 +119,8 @@ func adddefault(mkvfile string, track int64, cmd runner) error {
 	return cmd.run("mkvpropedit", mkvfile, "--edit", fmt.Sprintf("track:%d", track), "--set", "flag-default=1")
 }
 
-// mustParseFile parses the MKV file and returns a handler, or aborts with an
-// error message in case of problems.
-func mustParseFile(fname string) MyParser {
-	handler := MyParser{fname: fname}
-	err := mkvparse.ParsePath(fname, &handler)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return handler
-}
-
 // trackInfo returns the trackinfo for a given track number, or error if it does not exist.
-func trackInfo(handler MyParser, track int64) (trackinfo, error) {
+func trackInfo(handler mkvParser, track int64) (trackinfo, error) {
 	for _, v := range handler.tracks {
 		if v.number == track {
 			return v, nil
