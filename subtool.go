@@ -158,8 +158,8 @@ func main() {
 
 		// setdefault
 		setDefaultCmd   = app.Command("setdefault", "Set default subtitle tag")
-		setDefaultFile  = setDefaultCmd.Arg("input-file", "Matroska Input file").Required().String()
 		setDefaultTrack = setDefaultCmd.Arg("track", "Track number to set as default").Required().Int64()
+		setDefaultFile  = setDefaultCmd.Arg("input-file", "Matroska Input file").Required().String()
 
 		// only
 		setOnlyCmd    = app.Command("only", "Remove all subtitle tracks, except one")
