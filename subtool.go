@@ -7,6 +7,8 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/exec"
+	"strings"
 )
 
 // Track Types. See https://www.matroska.org/technical/specs/index.html
@@ -147,6 +149,24 @@ func trackType(t int64) string {
 	return fmt.Sprintf("Unknown(%d)", t)
 }
 
+// requirements returns nil if all required tools are installed and an error indicating
+// the tools missing otherwise.
+func requirements() error {
+	var tools = []string{"mkvextract", "mkvmerge", "mkvpropedit"}
+
+	missing := []string{}
+	for _, t := range tools {
+		_, err := exec.LookPath(t)
+		if err != nil {
+			missing = append(missing, t)
+		}
+	}
+	if len(missing) != 0 {
+		return fmt.Errorf("required 3rd party tool(s) missing: %s", strings.Join(missing, ","))
+	}
+	return nil
+}
+
 func main() {
 	var (
 		app    = kingpin.New("subtool", "Subtitle operations on matroska containers")
@@ -176,6 +196,10 @@ func main() {
 		run runner
 	)
 
+	if err := requirements(); err != nil {
+		log.Fatalf("Requirements check: %v", err)
+	}
+
 	// Plain logs.
 	log.SetFlags(0)
 
@@ -194,17 +218,17 @@ func main() {
 	case setDefaultCmd.FullCommand():
 		h := mustParseFile(*setDefaultFile)
 		if err := setdefault(h, *setDefaultTrack, run); err != nil {
-			log.Fatal(err)
+			log.Fatalf("Error setting default track: %v", err)
 		}
 	case setOnlyCmd.FullCommand():
 		h := mustParseFile(*setOnlyInput)
 		tfi, err := extract(h, *setOnlyTrack, run)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalf("Error extracting track: %v", err)
 		}
 		err = submux(*setOnlyInput, *setOnlyOutput, true, run, tfi)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalf("Error adding subtitle: %v", err)
 		}
 		os.Remove(tfi.fname)
 	}
