@@ -50,10 +50,10 @@ func show(p mkvParser) {
 }
 
 // setdefault resets flagDefault on all subtitle tracks and sets it on the chosen track UID.
-func setdefault(mkvfile string, p mkvParser, track int64, cmd runner) error {
+func setdefault(p mkvParser, track int64, cmd runner) error {
 	command := []string{
 		"mkvpropedit",
-		mkvfile,
+		p.fname,
 	}
 
 	for _, t := range p.tracks {
@@ -65,7 +65,7 @@ func setdefault(mkvfile string, p mkvParser, track int64, cmd runner) error {
 	if err := cmd.run(command[0], command[1:]...); err != nil {
 		return err
 	}
-	return adddefault(mkvfile, track, cmd)
+	return adddefault(p.fname, track, cmd)
 }
 
 // extract extracts a given track into a file.
@@ -193,7 +193,7 @@ func main() {
 		show(h)
 	case setDefaultCmd.FullCommand():
 		h := mustParseFile(*setDefaultFile)
-		if err := setdefault(*setDefaultFile, h, *setDefaultTrack, run); err != nil {
+		if err := setdefault(h, *setDefaultTrack, run); err != nil {
 			log.Fatal(err)
 		}
 	case setOnlyCmd.FullCommand():
