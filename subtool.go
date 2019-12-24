@@ -70,14 +70,15 @@ func setdefault(p mkvParser, track int64, cmd runner) error {
 
 	for _, t := range p.tracks {
 		if t.tracktype == typeSubtitle {
-			command = append(command, "--edit", fmt.Sprintf("track:%d", t.uid), "--set", "flag-default=0")
+			command = append(command, "--edit", fmt.Sprintf("track:%d", t.number), "--set", "flag-default=0")
 		}
 	}
 
 	if err := cmd.run(command[0], command[1:]...); err != nil {
 		return err
 	}
-	return adddefault(p.fname, track, cmd)
+	// Tracks selected by the user have offset = 0 so we make them offset = 1.
+	return adddefault(p.fname, track+1, cmd)
 }
 
 // extract extracts a given track into a file.
