@@ -60,7 +60,7 @@ func setdefault(p mkvParser, track int64, cmd runner) error {
 
 	for _, t := range p.tracks {
 		if t.tracktype == typeSubtitle {
-			command = append(command, "--edit", fmt.Sprintf("track:=%d", t.uid), "--set", "flag-default=0")
+			command = append(command, "--edit", fmt.Sprintf("track:%d", t.uid), "--set", "flag-default=0")
 		}
 	}
 
