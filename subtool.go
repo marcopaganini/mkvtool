@@ -39,14 +39,24 @@ type trackFileInfo struct {
 }
 
 // show lists all tracks in a file.
-func show(p mkvParser) {
+func show(p mkvParser, showUID bool) {
 	tab := table.NewWriter()
 	tab.SetOutputMirror(os.Stdout)
-	tab.AppendHeader(table.Row{"Number", "UID", "Type", "Name", "Language", "Codec", "Default"})
+	if showUID {
+		tab.AppendHeader(table.Row{"Number", "UID", "Type", "Name", "Language", "Codec", "Default"})
+	} else {
+		tab.AppendHeader(table.Row{"Number", "Type", "Name", "Language", "Codec", "Default"})
+	}
 
-	// Commands use track starting at offset zero, hence the subtraction below.
 	for _, t := range p.tracks {
-		tab.AppendRow([]interface{}{t.number - 1, uint64(t.uid), trackType(t.tracktype), t.name, t.language, t.CodecID, t.flagDefault})
+		// Create a row with the desired columns.
+		// Commands use track starting at offset zero, hence the subtraction below.
+		row := []interface{}{t.number - 1}
+		if showUID {
+			row = append(row, uint64(t.uid))
+		}
+		row = append(row, trackType(t.tracktype), t.name, t.language, t.CodecID, t.flagDefault)
+		tab.AppendRow(row)
 	}
 	tab.Render()
 }
@@ -174,6 +184,7 @@ func main() {
 
 		// show
 		showCmd  = app.Command("show", "Show Information about a file.")
+		showUID  = showCmd.Flag("uid", "Include track UIDs in the output").Short('u').Bool()
 		showFile = showCmd.Arg("input-file", "Matroska Input file").Required().String()
 
 		// setdefault
@@ -214,7 +225,7 @@ func main() {
 	switch k {
 	case showCmd.FullCommand():
 		h := mustParseFile(*showFile)
-		show(h)
+		show(h, *showUID)
 	case setDefaultCmd.FullCommand():
 		h := mustParseFile(*setDefaultFile)
 		if err := setdefault(h, *setDefaultTrack, run); err != nil {
