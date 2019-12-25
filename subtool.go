@@ -11,6 +11,20 @@ import (
 	"strings"
 )
 
+// A friendly chat about Matroska metadata track numbers.
+//
+// Matroska tracks numbers are confusing. Tracks are stored in the file
+// starting at 1 (ONE). Some mkvtoolnix commands such as mkvmerge and
+// mkvextract expect tracks to start at offset zero (ZERO), while others like
+// mkvpropedit, expect offset 1. Due to this, the following conventions were
+// adopted here:
+//
+// - Tracks are always displayed as they appear in the file (base = 1), thus
+//   all user selectable tracks expect offset = 1.
+// - Any actions using mkvpropedit use the track number unchanged.
+// - Any actions using mkvmerge or mkvextract will automatically subtract one
+//   from the track number.
+
 // Track Types. See https://www.matroska.org/technical/specs/index.html
 const (
 	typeVideo    = 1
@@ -50,8 +64,7 @@ func show(p mkvParser, showUID bool) {
 
 	for _, t := range p.tracks {
 		// Create a row with the desired columns.
-		// Commands use track starting at offset zero, hence the subtraction below.
-		row := []interface{}{t.number - 1}
+		row := []interface{}{t.number}
 		if showUID {
 			row = append(row, uint64(t.uid))
 		}
@@ -85,7 +98,7 @@ func setdefault(p mkvParser, track int64, cmd runner) error {
 		return err
 	}
 	// Tracks selected by the user have offset = 0 so we make them offset = 1.
-	return adddefault(p.fname, track+1, cmd)
+	return adddefault(p.fname, track, cmd)
 }
 
 // trackByLanguage returns the track number (base 1) for the first track with
@@ -125,11 +138,12 @@ func extract(handler mkvParser, track int64, cmd runner) (trackFileInfo, error) 
 	temp := tmpfile.Name()
 	tmpfile.Close()
 
+	// Note: mkvextract uses 0 for the first track number.
 	command := []string{
 		"mkvextract",
 		handler.fname,
 		"tracks",
-		fmt.Sprintf("%d:%s", track, temp),
+		fmt.Sprintf("%d:%s", track-1, temp),
 	}
 	if err := cmd.run(command[0], command[1:]...); err != nil {
 		return trackFileInfo{}, err
@@ -137,7 +151,7 @@ func extract(handler mkvParser, track int64, cmd runner) (trackFileInfo, error) 
 	return trackFileInfo{language: ti.language, fname: temp}, nil
 }
 
-// mux merges an input file (usually an mkv file) and multiple subtitles into a
+// submux merges an input file (usually an mkv file) and multiple subtitles into a
 // destination, optionally removing all other subtitles from the source.
 func submux(infile, outfile string, nosubs bool, cmd runner, subs ...trackFileInfo) error {
 	cmdline := []string{"mkvmerge", "-o", outfile}
