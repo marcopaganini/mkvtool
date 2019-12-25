@@ -231,15 +231,16 @@ func main() {
 		app    = kingpin.New("subtool", "Subtitle operations on matroska containers.")
 		dryrun = app.Flag("dry-run", "Dry-run mode (only show commands).").Short('n').Bool()
 
+		// only
+		setOnlyCmd    = app.Command("only", "Remove all subtitle tracks, except one.")
+		setOnlyTrack  = setOnlyCmd.Arg("track", "Track number to keep.").Required().Int64()
+		setOnlyInput  = setOnlyCmd.Arg("input", "Matroska Input file.").Required().String()
+		setOnlyOutput = setOnlyCmd.Arg("output", "Matroska Output file.").Required().String()
+
 		// remux
 		remuxCmd       = app.Command("remux", "Remux input file into an output file.")
 		remuxCmdInput  = remuxCmd.Arg("input-file", "Matroska Input file.").Required().String()
 		remuxCmdOutput = remuxCmd.Arg("output-file", "Matroska Input file.").Required().String()
-
-		// show
-		showCmd  = app.Command("show", "Show Information about a file.")
-		showUID  = showCmd.Flag("uid", "Include track UIDs in the output.").Short('u').Bool()
-		showFile = showCmd.Arg("input-file", "Matroska Input file.").Required().String()
 
 		// setdefault
 		setDefaultCmd   = app.Command("setdefault", "Set default subtitle tag on a track.")
@@ -251,11 +252,10 @@ func main() {
 		setDefaultByLangList = setDefaultByLangCmd.Flag("lang", "Preferred languages (Use multiple times. Use 'default' for tracks with no language set.)").Required().Strings()
 		setDefaultByLangFile = setDefaultByLangCmd.Arg("mkvfile", "Matroska file.").Required().String()
 
-		// only
-		setOnlyCmd    = app.Command("only", "Remove all subtitle tracks, except one.")
-		setOnlyTrack  = setOnlyCmd.Arg("track", "Track number to keep.").Required().Int64()
-		setOnlyInput  = setOnlyCmd.Arg("input", "Matroska Input file.").Required().String()
-		setOnlyOutput = setOnlyCmd.Arg("output", "Matroska Output file.").Required().String()
+		// show
+		showCmd  = app.Command("show", "Show Information about a file.")
+		showUID  = showCmd.Flag("uid", "Include track UIDs in the output.").Short('u').Bool()
+		showFile = showCmd.Arg("input-file", "Matroska Input file.").Required().String()
 
 		// Command runner.
 		runCmd runCommand
