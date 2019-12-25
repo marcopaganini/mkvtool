@@ -55,7 +55,14 @@ func show(p mkvParser, showUID bool) {
 		if showUID {
 			row = append(row, uint64(t.uid))
 		}
-		row = append(row, trackType(t.tracktype), t.name, t.language, t.CodecID, t.flagDefault)
+		row = append(row, trackType(t.tracktype), t.name, t.language, t.CodecID)
+
+		// Make default flag easier to see.
+		if t.flagDefault {
+			row = append(row, "<=====")
+		} else {
+			row = append(row, "")
+		}
 		tab.AppendRow(row)
 	}
 	tab.Render()
@@ -79,6 +86,27 @@ func setdefault(p mkvParser, track int64, cmd runner) error {
 	}
 	// Tracks selected by the user have offset = 0 so we make them offset = 1.
 	return adddefault(p.fname, track+1, cmd)
+}
+
+// trackByLanguage returns the track number (base 1) for the first track with
+// one of the specified languages. The list of languages works as a priority,
+// meaning that languages=["eng","fra"] will first attempt to find a track with
+// the English language, and failing that, French. The special language
+// "default" will cause tracks without a language code to be selected (Matroska
+// has the concept of a "default language", which is usually English -- tracks
+// with this language will not have a language code).
+func trackByLanguage(p mkvParser, languages []string) (int64, error) {
+	for _, lang := range languages {
+		if lang == "default" {
+			lang = ""
+		}
+		for _, t := range p.tracks {
+			if t.tracktype == typeSubtitle && t.language == lang {
+				return t.number, nil
+			}
+		}
+	}
+	return 0, fmt.Errorf("no track with language(s): %s", strings.Join(languages, ","))
 }
 
 // extract extracts a given track into a file.
@@ -180,24 +208,29 @@ func requirements() error {
 
 func main() {
 	var (
-		app    = kingpin.New("subtool", "Subtitle operations on matroska containers")
-		dryrun = app.Flag("dry-run", "Dry-run mode (only show commands)").Short('n').Bool()
+		app    = kingpin.New("subtool", "Subtitle operations on matroska containers.")
+		dryrun = app.Flag("dry-run", "Dry-run mode (only show commands).").Short('n').Bool()
 
 		// show
 		showCmd  = app.Command("show", "Show Information about a file.")
-		showUID  = showCmd.Flag("uid", "Include track UIDs in the output").Short('u').Bool()
-		showFile = showCmd.Arg("input-file", "Matroska Input file").Required().String()
+		showUID  = showCmd.Flag("uid", "Include track UIDs in the output.").Short('u').Bool()
+		showFile = showCmd.Arg("input-file", "Matroska Input file.").Required().String()
 
 		// setdefault
-		setDefaultCmd   = app.Command("setdefault", "Set default subtitle tag")
-		setDefaultTrack = setDefaultCmd.Arg("track", "Track number to set as default").Required().Int64()
-		setDefaultFile  = setDefaultCmd.Arg("input-file", "Matroska Input file").Required().String()
+		setDefaultCmd   = app.Command("setdefault", "Set default subtitle tag on a track.")
+		setDefaultTrack = setDefaultCmd.Arg("track", "Track number to set as default.").Required().Int64()
+		setDefaultFile  = setDefaultCmd.Arg("mkvfile", "Matroska file.").Required().String()
+
+		// setdefaultbylanguage
+		setDefaultByLangCmd  = app.Command("setdefaultbylang", "Set default subtitle track by language.")
+		setDefaultByLangList = setDefaultByLangCmd.Flag("lang", "Preferred languages (Use multiple times. Use 'default' for tracks with no language set.)").Required().Strings()
+		setDefaultByLangFile = setDefaultByLangCmd.Arg("mkvfile", "Matroska file.").Required().String()
 
 		// only
-		setOnlyCmd    = app.Command("only", "Remove all subtitle tracks, except one")
-		setOnlyTrack  = setOnlyCmd.Arg("track", "Track number to keep").Required().Int64()
-		setOnlyInput  = setOnlyCmd.Arg("input", "Matroska Input file").Required().String()
-		setOnlyOutput = setOnlyCmd.Arg("output", "Matroska Output file").Required().String()
+		setOnlyCmd    = app.Command("only", "Remove all subtitle tracks, except one.")
+		setOnlyTrack  = setOnlyCmd.Arg("track", "Track number to keep.").Required().Int64()
+		setOnlyInput  = setOnlyCmd.Arg("input", "Matroska Input file.").Required().String()
+		setOnlyOutput = setOnlyCmd.Arg("output", "Matroska Output file.").Required().String()
 
 		// Command runner.
 		runCmd runCommand
@@ -230,6 +263,15 @@ func main() {
 	case setDefaultCmd.FullCommand():
 		h := mustParseFile(*setDefaultFile)
 		if err := setdefault(h, *setDefaultTrack, run); err != nil {
+			log.Fatalf("Error setting default track: %v", err)
+		}
+	case setDefaultByLangCmd.FullCommand():
+		h := mustParseFile(*setDefaultByLangFile)
+		track, err := trackByLanguage(h, *setDefaultByLangList)
+		if err != nil {
+			log.Fatalf("Error setting default track by language: %v", err)
+		}
+		if err := setdefault(h, track, run); err != nil {
 			log.Fatalf("Error setting default track: %v", err)
 		}
 	case setOnlyCmd.FullCommand():
