@@ -169,6 +169,12 @@ func submux(infile, outfile string, nosubs bool, cmd runner, subs ...trackFileIn
 
 }
 
+// remux re-multiplexes the input file into the output file without changes.
+// This is useful to fix problems in poorly assembled Matroska files.
+func remux(infile, outfile string, cmd runner) error {
+	return cmd.run("mkvmerge", infile, "-o", outfile)
+}
+
 // adddefault adds the default flag to a given track UID.
 func adddefault(mkvfile string, track int64, cmd runner) error {
 	return cmd.run("mkvpropedit", mkvfile, "--edit", fmt.Sprintf("track:%d", track), "--set", "flag-default=1")
@@ -225,6 +231,11 @@ func main() {
 		app    = kingpin.New("subtool", "Subtitle operations on matroska containers.")
 		dryrun = app.Flag("dry-run", "Dry-run mode (only show commands).").Short('n').Bool()
 
+		// remux
+		remuxCmd       = app.Command("remux", "Remux input file into an output file.")
+		remuxCmdInput  = remuxCmd.Arg("input-file", "Matroska Input file.").Required().String()
+		remuxCmdOutput = remuxCmd.Arg("output-file", "Matroska Input file.").Required().String()
+
 		// show
 		showCmd  = app.Command("show", "Show Information about a file.")
 		showUID  = showCmd.Flag("uid", "Include track UIDs in the output.").Short('u').Bool()
@@ -270,34 +281,41 @@ func main() {
 		run = fakeRunCmd
 	}
 
+	var err error
+
 	switch k {
+	case remuxCmd.FullCommand():
+		err = remux(*remuxCmdInput, *remuxCmdOutput, run)
+
 	case showCmd.FullCommand():
 		h := mustParseFile(*showFile)
 		show(h, *showUID)
+
 	case setDefaultCmd.FullCommand():
 		h := mustParseFile(*setDefaultFile)
-		if err := setdefault(h, *setDefaultTrack, run); err != nil {
-			log.Fatalf("Error setting default track: %v", err)
-		}
+		err = setdefault(h, *setDefaultTrack, run)
+
 	case setDefaultByLangCmd.FullCommand():
 		h := mustParseFile(*setDefaultByLangFile)
 		track, err := trackByLanguage(h, *setDefaultByLangList)
 		if err != nil {
-			log.Fatalf("Error setting default track by language: %v", err)
+			break
 		}
-		if err := setdefault(h, track, run); err != nil {
-			log.Fatalf("Error setting default track: %v", err)
-		}
+		err = setdefault(h, track, run)
+
 	case setOnlyCmd.FullCommand():
 		h := mustParseFile(*setOnlyInput)
 		tfi, err := extract(h, *setOnlyTrack, run)
 		if err != nil {
-			log.Fatalf("Error extracting track: %v", err)
+			break
 		}
 		err = submux(*setOnlyInput, *setOnlyOutput, true, run, tfi)
-		if err != nil {
-			log.Fatalf("Error adding subtitle: %v", err)
-		}
+		// Attempt to remove even on error.
 		os.Remove(tfi.fname)
+	}
+
+	// Print error message, if any
+	if err != nil {
+		log.Fatalf("Error during %s: %v", k, err)
 	}
 }
