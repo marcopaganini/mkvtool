@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/remko/go-mkvparse"
 	"log"
+	"os"
 	"time"
 )
 
@@ -15,11 +16,6 @@ type mkvParser struct {
 
 func (p *mkvParser) HandleMasterBegin(id mkvparse.ElementID, info mkvparse.ElementInfo) (bool, error) {
 	//fmt.Printf("==> %v\n", mkvparse.NameForElementID(id))
-	// Skip large elements.
-	if id == mkvparse.CuesElement || id == mkvparse.ClusterElement {
-		return false, nil
-	}
-
 	if id == mkvparse.TrackEntryElement {
 		p.inTrack = true
 	}
@@ -88,8 +84,14 @@ func (p *mkvParser) HandleBinary(id mkvparse.ElementID, value []byte, info mkvpa
 // error message in case of problems.
 func mustParseFile(fname string) mkvParser {
 	handler := mkvParser{fname: fname}
-	err := mkvparse.ParsePath(fname, &handler)
+	f, err := os.Open(fname)
 	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+
+	// Only parse the sections we want.
+	if err = mkvparse.ParseSections(f, &handler, mkvparse.TracksElement); err != nil {
 		log.Fatal(err)
 	}
 	return handler
