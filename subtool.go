@@ -241,10 +241,10 @@ func main() {
 		addInputs = addCmd.Arg("input-files", "Input files.").Required().Strings()
 
 		// only
-		setOnlyCmd    = app.Command("only", "Remove all subtitle tracks, except one.")
-		setOnlyTrack  = setOnlyCmd.Arg("track", "Track number to keep.").Required().Int64()
-		setOnlyInput  = setOnlyCmd.Arg("input", "Matroska Input file.").Required().String()
-		setOnlyOutput = setOnlyCmd.Arg("output", "Matroska Output file.").Required().String()
+		onlyCmd       = app.Command("only", "Remove all subtitle tracks, except one.")
+		setOnlyTrack  = onlyCmd.Arg("track", "Track number to keep.").Required().Int64()
+		setOnlyInput  = onlyCmd.Arg("input", "Matroska Input file.").Required().String()
+		setOnlyOutput = onlyCmd.Arg("output", "Matroska Output file.").Required().String()
 
 		// remux
 		remuxCmd       = app.Command("remux", "Remux input file into an output file.")
@@ -296,12 +296,19 @@ func main() {
 	case addCmd.FullCommand():
 		err = remux(*addInputs, *addOutput, run)
 
+	case onlyCmd.FullCommand():
+		h := mustParseFile(*setOnlyInput)
+		var tfi trackFileInfo
+		tfi, err = extract(h, *setOnlyTrack, run)
+		if err != nil {
+			break
+		}
+		err = submux(*setOnlyInput, *setOnlyOutput, true, run, tfi)
+		// Attempt to remove even on error.
+		os.Remove(tfi.fname)
+
 	case remuxCmd.FullCommand():
 		err = remux([]string{*remuxCmdInput}, *remuxCmdOutput, run)
-
-	case showCmd.FullCommand():
-		h := mustParseFile(*showFile)
-		show(h, *showUID)
 
 	case setDefaultCmd.FullCommand():
 		h := mustParseFile(*setDefaultFile)
@@ -316,16 +323,9 @@ func main() {
 		}
 		err = setdefault(h, track, run)
 
-	case setOnlyCmd.FullCommand():
-		h := mustParseFile(*setOnlyInput)
-		var tfi trackFileInfo
-		tfi, err = extract(h, *setOnlyTrack, run)
-		if err != nil {
-			break
-		}
-		err = submux(*setOnlyInput, *setOnlyOutput, true, run, tfi)
-		// Attempt to remove even on error.
-		os.Remove(tfi.fname)
+	case showCmd.FullCommand():
+		h := mustParseFile(*showFile)
+		show(h, *showUID)
 	}
 
 	// Print error message, if any
