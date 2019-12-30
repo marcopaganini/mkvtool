@@ -169,10 +169,14 @@ func submux(infile, outfile string, nosubs bool, cmd runner, subs ...trackFileIn
 
 }
 
-// remux re-multiplexes the input file into the output file without changes.
+// remux re-multiplexes the input file(s) into the output file without changes.
 // This is useful to fix problems in poorly assembled Matroska files.
-func remux(infile, outfile string, cmd runner) error {
-	return cmd.run("mkvmerge", infile, "-o", outfile)
+func remux(infiles []string, outfile string, cmd runner) error {
+	cmdline := []string{"mkvmerge"}
+	cmdline = append(cmdline, infiles...)
+	cmdline = append(cmdline, "-o", outfile)
+
+	return cmd.run(cmdline[0], cmdline[1:]...)
 }
 
 // adddefault adds the default flag to a given track UID.
@@ -231,6 +235,11 @@ func main() {
 		app    = kingpin.New("subtool", "Subtitle operations on matroska containers.")
 		dryrun = app.Flag("dry-run", "Dry-run mode (only show commands).").Short('n').Bool()
 
+		// add
+		addCmd    = app.Command("add", "Add an input track (subtitle/video/audio) into an output file.")
+		addOutput = addCmd.Flag("output", "Output file.").Required().Short('o').String()
+		addInputs = addCmd.Arg("input-files", "Input files.").Required().Strings()
+
 		// only
 		setOnlyCmd    = app.Command("only", "Remove all subtitle tracks, except one.")
 		setOnlyTrack  = setOnlyCmd.Arg("track", "Track number to keep.").Required().Int64()
@@ -240,7 +249,7 @@ func main() {
 		// remux
 		remuxCmd       = app.Command("remux", "Remux input file into an output file.")
 		remuxCmdInput  = remuxCmd.Arg("input-file", "Matroska Input file.").Required().String()
-		remuxCmdOutput = remuxCmd.Arg("output-file", "Matroska Input file.").Required().String()
+		remuxCmdOutput = remuxCmd.Arg("output-file", "Matroska Output file.").Required().String()
 
 		// setdefault
 		setDefaultCmd   = app.Command("setdefault", "Set default subtitle tag on a track.")
@@ -284,8 +293,11 @@ func main() {
 	var err error
 
 	switch k {
+	case addCmd.FullCommand():
+		err = remux(*addInputs, *addOutput, run)
+
 	case remuxCmd.FullCommand():
-		err = remux(*remuxCmdInput, *remuxCmdOutput, run)
+		err = remux([]string{*remuxCmdInput}, *remuxCmdOutput, run)
 
 	case showCmd.FullCommand():
 		h := mustParseFile(*showFile)
@@ -297,7 +309,8 @@ func main() {
 
 	case setDefaultByLangCmd.FullCommand():
 		h := mustParseFile(*setDefaultByLangFile)
-		track, err := trackByLanguage(h, *setDefaultByLangList)
+		var track int64
+		track, err = trackByLanguage(h, *setDefaultByLangList)
 		if err != nil {
 			break
 		}
@@ -305,7 +318,8 @@ func main() {
 
 	case setOnlyCmd.FullCommand():
 		h := mustParseFile(*setOnlyInput)
-		tfi, err := extract(h, *setOnlyTrack, run)
+		var tfi trackFileInfo
+		tfi, err = extract(h, *setOnlyTrack, run)
 		if err != nil {
 			break
 		}
