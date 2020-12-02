@@ -169,10 +169,13 @@ func submux(infile, outfile string, nosubs bool, cmd runner, subs ...trackFileIn
 
 }
 
-// remux re-multiplexes the input file(s) into the output file without changes.
-// This is useful to fix problems in poorly assembled Matroska files.
-func remux(infiles []string, outfile string, cmd runner) error {
+// remux re-multiplexes the input file(s) into the output file. Setting subs to
+// false will cause subs not to be copied.
+func remux(infiles []string, outfile string, cmd runner, subs bool) error {
 	cmdline := []string{"mkvmerge"}
+	if !subs {
+		cmdline = append(cmdline, "-S")
+	}
 	cmdline = append(cmdline, infiles...)
 	cmdline = append(cmdline, "-o", outfile)
 
@@ -238,6 +241,7 @@ func main() {
 		// merge
 		mergeCmd    = app.Command("merge", "Merge input tracks and files (subtitle/video/audio) into an output file.")
 		mergeOutput = mergeCmd.Flag("output", "Output file.").Required().Short('o').String()
+		mergeSubs   = mergeCmd.Flag("subs", "Copy subs from video file.").Default("true").Bool()
 		mergeInputs = mergeCmd.Arg("input-files", "Input files.").Required().Strings()
 
 		// only
@@ -294,7 +298,7 @@ func main() {
 
 	switch k {
 	case mergeCmd.FullCommand():
-		err = remux(*mergeInputs, *mergeOutput, run)
+		err = remux(*mergeInputs, *mergeOutput, run, *mergeSubs)
 
 	case onlyCmd.FullCommand():
 		h := mustParseFile(*setOnlyInput)
@@ -308,7 +312,7 @@ func main() {
 		os.Remove(tfi.fname)
 
 	case remuxCmd.FullCommand():
-		err = remux([]string{*remuxCmdInput}, *remuxCmdOutput, run)
+		err = remux([]string{*remuxCmdInput}, *remuxCmdOutput, run, true)
 
 	case setDefaultCmd.FullCommand():
 		h := mustParseFile(*setDefaultFile)
