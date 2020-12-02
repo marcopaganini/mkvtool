@@ -235,10 +235,10 @@ func main() {
 		app    = kingpin.New("subtool", "Subtitle operations on matroska containers.")
 		dryrun = app.Flag("dry-run", "Dry-run mode (only show commands).").Short('n').Bool()
 
-		// add
-		addCmd    = app.Command("add", "Add an input track (subtitle/video/audio) into an output file.")
-		addOutput = addCmd.Flag("output", "Output file.").Required().Short('o').String()
-		addInputs = addCmd.Arg("input-files", "Input files.").Required().Strings()
+		// merge
+		mergeCmd    = app.Command("merge", "Merge input tracks and files (subtitle/video/audio) into an output file.")
+		mergeOutput = mergeCmd.Flag("output", "Output file.").Required().Short('o').String()
+		mergeInputs = mergeCmd.Arg("input-files", "Input files.").Required().Strings()
 
 		// only
 		onlyCmd       = app.Command("only", "Remove all subtitle tracks, except one.")
@@ -293,8 +293,8 @@ func main() {
 	var err error
 
 	switch k {
-	case addCmd.FullCommand():
-		err = remux(*addInputs, *addOutput, run)
+	case mergeCmd.FullCommand():
+		err = remux(*mergeInputs, *mergeOutput, run)
 
 	case onlyCmd.FullCommand():
 		h := mustParseFile(*setOnlyInput)
