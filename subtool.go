@@ -78,6 +78,7 @@ func show(p mkvParser, showUID bool) {
 		}
 		tab.AppendRow(row)
 	}
+	fmt.Printf("%s\n", p.fname)
 	tab.Render()
 }
 
@@ -258,17 +259,17 @@ func main() {
 		// setdefault
 		setDefaultCmd   = app.Command("setdefault", "Set default subtitle tag on a track.")
 		setDefaultTrack = setDefaultCmd.Arg("track", "Track number to set as default.").Required().Int64()
-		setDefaultFile  = setDefaultCmd.Arg("mkvfile", "Matroska file.").Required().String()
+		setDefaultFiles = setDefaultCmd.Arg("mkvfile", "Matroska file.").Required().Strings()
 
 		// setdefaultbylanguage
-		setDefaultByLangCmd  = app.Command("setdefaultbylang", "Set default subtitle track by language.")
-		setDefaultByLangList = setDefaultByLangCmd.Flag("lang", "Preferred languages (Use multiple times. Use 'default' for tracks with no language set.)").Required().Strings()
-		setDefaultByLangFile = setDefaultByLangCmd.Arg("mkvfile", "Matroska file.").Required().String()
+		setDefaultByLangCmd   = app.Command("setdefaultbylang", "Set default subtitle track by language.")
+		setDefaultByLangList  = setDefaultByLangCmd.Flag("lang", "Preferred languages (Use multiple times. Use 'default' for tracks with no language set.)").Required().Strings()
+		setDefaultByLangFiles = setDefaultByLangCmd.Arg("mkvfiles", "Matroska file(s).").Required().Strings()
 
 		// show
-		showCmd  = app.Command("show", "Show Information about a file.")
-		showUID  = showCmd.Flag("uid", "Include track UIDs in the output.").Short('u').Bool()
-		showFile = showCmd.Arg("input-file", "Matroska Input file.").Required().String()
+		showCmd   = app.Command("show", "Show Information about file(s).")
+		showUID   = showCmd.Flag("uid", "Include track UIDs in the output.").Short('u').Bool()
+		showFiles = showCmd.Arg("input-files", "Matroska Input files.").Required().Strings()
 
 		// Command runner.
 		runCmd runCommand
@@ -315,21 +316,29 @@ func main() {
 		err = remux([]string{*remuxCmdInput}, *remuxCmdOutput, run, true)
 
 	case setDefaultCmd.FullCommand():
-		h := mustParseFile(*setDefaultFile)
-		err = setdefault(h, *setDefaultTrack, run)
+		for _, f := range *setDefaultFiles {
+			h := mustParseFile(f)
+			err = setdefault(h, *setDefaultTrack, run)
+			if err != nil {
+				break
+			}
+		}
 
 	case setDefaultByLangCmd.FullCommand():
-		h := mustParseFile(*setDefaultByLangFile)
-		var track int64
-		track, err = trackByLanguage(h, *setDefaultByLangList)
-		if err != nil {
-			break
+		for _, f := range *setDefaultByLangFiles {
+			h := mustParseFile(f)
+			track, err := trackByLanguage(h, *setDefaultByLangList)
+			if err != nil {
+				break
+			}
+			err = setdefault(h, track, run)
 		}
-		err = setdefault(h, track, run)
 
 	case showCmd.FullCommand():
-		h := mustParseFile(*showFile)
-		show(h, *showUID)
+		for _, f := range *showFiles {
+			h := mustParseFile(f)
+			show(h, *showUID)
+		}
 	}
 
 	// Print error message, if any
