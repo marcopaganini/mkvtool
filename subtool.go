@@ -109,18 +109,40 @@ func setdefault(p mkvParser, track int64, cmd runner) error {
 // "default" will cause tracks without a language code to be selected (Matroska
 // has the concept of a "default language", which is usually English -- tracks
 // with this language will not have a language code).
-func trackByLanguage(p mkvParser, languages []string) (int64, error) {
+//
+// The ignore slice contains a list of strings for case-insentive search
+// against the track name. If the selected language contains one of the strings
+// in this slice, it will be ignored. This is useful to select tracks by
+// language while ignoring 'Forced' tracks.
+func trackByLanguage(p mkvParser, languages []string, ignore []string) (int64, error) {
 	for _, lang := range languages {
 		if lang == "default" {
 			lang = ""
 		}
 		for _, t := range p.tracks {
-			if t.tracktype == typeSubtitle && t.language == lang {
-				return t.number, nil
+			// Match subtitle and language.
+			if t.tracktype != typeSubtitle || t.language != lang {
+				continue
 			}
+			// Make sure track should not be ignored.
+			if stringInSlice(t.name, ignore) {
+				continue
+			}
+			return t.number, nil
 		}
 	}
 	return 0, fmt.Errorf("no track with language(s): %s", strings.Join(languages, ","))
+}
+
+// stringInSlice returns true if a string exists inside a slice of strings.
+// Comparison is case insensitive.
+func stringInSlice(s string, slc []string) bool {
+	for _, substr := range slc {
+		if strings.Contains(strings.ToLower(s), strings.ToLower(substr)) {
+			return true
+		}
+	}
+	return false
 }
 
 // extract extracts a given track into a file.
@@ -262,9 +284,10 @@ func main() {
 		setDefaultFiles = setDefaultCmd.Arg("mkvfile", "Matroska file.").Required().Strings()
 
 		// setdefaultbylanguage
-		setDefaultByLangCmd   = app.Command("setdefaultbylang", "Set default subtitle track by language.")
-		setDefaultByLangList  = setDefaultByLangCmd.Flag("lang", "Preferred languages (Use multiple times. Use 'default' for tracks with no language set.)").Required().Strings()
-		setDefaultByLangFiles = setDefaultByLangCmd.Arg("mkvfiles", "Matroska file(s).").Required().Strings()
+		setDefaultByLangCmd    = app.Command("setdefaultbylang", "Set default subtitle track by language.")
+		setDefaultByLangList   = setDefaultByLangCmd.Flag("lang", "Preferred languages (Use multiple times. Use 'default' for tracks with no language set.)").Required().Strings()
+		setDefaultByLangIgnore = setDefaultByLangCmd.Flag("ignore", "Ignore tracks with this string in the name (can be used multiple times.)").Strings()
+		setDefaultByLangFiles  = setDefaultByLangCmd.Arg("mkvfiles", "Matroska file(s).").Required().Strings()
 
 		// show
 		showCmd   = app.Command("show", "Show Information about file(s).")
@@ -327,7 +350,9 @@ func main() {
 	case setDefaultByLangCmd.FullCommand():
 		for _, f := range *setDefaultByLangFiles {
 			h := mustParseFile(f)
-			track, err := trackByLanguage(h, *setDefaultByLangList)
+
+			var track int64
+			track, err = trackByLanguage(h, *setDefaultByLangList, *setDefaultByLangIgnore)
 			if err != nil {
 				break
 			}
