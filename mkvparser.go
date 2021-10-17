@@ -1,10 +1,11 @@
 package main
 
 import (
-	"github.com/remko/go-mkvparse"
 	"log"
 	"os"
 	"time"
+
+	"github.com/remko/go-mkvparse"
 )
 
 type mkvParser struct {

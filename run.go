@@ -34,8 +34,8 @@ func (x runCommand) run(name string, arg ...string) error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	io.Copy(os.Stdout, stdout)
-	io.Copy(os.Stderr, stderr)
+	_, _ = io.Copy(os.Stdout, stdout)
+	_, _ = io.Copy(os.Stderr, stderr)
 
 	return cmd.Wait()
 }

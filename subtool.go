@@ -2,13 +2,14 @@ package main
 
 import (
 	"fmt"
-	"github.com/jedib0t/go-pretty/table"
-	"gopkg.in/alecthomas/kingpin.v2"
 	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/jedib0t/go-pretty/table"
+	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 // A friendly chat about Matroska metadata track numbers.
@@ -51,6 +52,9 @@ type trackFileInfo struct {
 	language string
 	fname    string
 }
+
+// BuildVersion holds the git build number (set by make).
+var BuildVersion string
 
 // show lists all tracks in a file.
 func show(p mkvParser, showUID bool) {
@@ -159,7 +163,7 @@ func extract(handler mkvParser, track int64, cmd runner) (trackFileInfo, error) 
 		return trackFileInfo{}, err
 	}
 	temp := tmpfile.Name()
-	tmpfile.Close()
+	_ = tmpfile.Close()
 
 	// Note: mkvextract uses 0 for the first track number.
 	command := []string{
@@ -217,7 +221,7 @@ func trackInfo(handler mkvParser, track int64) (trackinfo, error) {
 			return v, nil
 		}
 	}
-	return trackinfo{}, fmt.Errorf("track number %d not found in file %s\n", track, handler.fname)
+	return trackinfo{}, fmt.Errorf("track number %d not found in file %s", track, handler.fname)
 }
 
 // trackType returns the string type of the track from the numeric track type value
@@ -294,6 +298,9 @@ func main() {
 		showUID   = showCmd.Flag("uid", "Include track UIDs in the output.").Short('u').Bool()
 		showFiles = showCmd.Arg("input-files", "Matroska Input files.").Required().Strings()
 
+		// version
+		versionCmd = app.Command("version", "Show version information.")
+
 		// Command runner.
 		runCmd runCommand
 
@@ -321,6 +328,11 @@ func main() {
 	var err error
 
 	switch k {
+	// Just print version number and exit.
+	case versionCmd.FullCommand():
+		fmt.Printf("Build Version: %s\n", BuildVersion)
+		os.Exit(0)
+
 	case mergeCmd.FullCommand():
 		err = remux(*mergeInputs, *mergeOutput, run, *mergeSubs)
 
@@ -333,7 +345,7 @@ func main() {
 		}
 		err = submux(*setOnlyInput, *setOnlyOutput, true, run, tfi)
 		// Attempt to remove even on error.
-		os.Remove(tfi.fname)
+		_ = os.Remove(tfi.fname)
 
 	case remuxCmd.FullCommand():
 		err = remux([]string{*remuxCmdInput}, *remuxCmdOutput, run, true)
