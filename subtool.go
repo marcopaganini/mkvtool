@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -9,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/jedib0t/go-pretty/table"
-	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 // A friendly chat about Matroska metadata track numbers.
@@ -20,32 +20,14 @@ import (
 // mkvpropedit, expect offset 1. Due to this, the following conventions were
 // adopted here:
 //
-// - Tracks are always displayed as they appear in the file (base = 1), thus
-//   all user selectable tracks expect offset = 1.
-// - Any actions using mkvpropedit use the track number unchanged.
-// - Any actions using mkvmerge or mkvextract will automatically subtract one
-//   from the track number.
-
+// - Tracks are always displayed starting at 0 (as the output of mkvmerge --identify)
+// - Any actions using mkvpropedit automatically add one to the track number.
+// - Any actions using mkvmerge or mkvextract will use the track number unchanged.
+//
 // Track Types. See https://www.matroska.org/technical/specs/index.html
 const (
-	typeVideo    = 1
-	typeAudio    = 2
-	typeComplex  = 3
-	typeLogo     = 16
-	typeSubtitle = 17
-	typeButtons  = 18
-	typeControl  = 32
+	typeSubtitle = "subtitles"
 )
-
-type trackinfo struct {
-	number      int64
-	uid         int64
-	name        string
-	tracktype   int64
-	language    string
-	flagDefault bool
-	CodecID     string
-}
 
 // trackFileInfo holds information about an exported track file.
 type trackFileInfo struct {
@@ -57,7 +39,7 @@ type trackFileInfo struct {
 var BuildVersion string
 
 // show lists all tracks in a file.
-func show(p mkvParser, showUID bool) {
+func show(mkv matroska, showUID bool) {
 	tab := table.NewWriter()
 	tab.SetOutputMirror(os.Stdout)
 	if showUID {
@@ -66,47 +48,48 @@ func show(p mkvParser, showUID bool) {
 		tab.AppendHeader(table.Row{"Number", "Type", "Name", "Language", "Codec", "Default"})
 	}
 
-	for _, t := range p.tracks {
+	for _, track := range mkv.Tracks {
 		// Create a row with the desired columns.
-		row := []interface{}{t.number}
+		// mkvmerge reports tracks starting at zero, so we add one to match the file.
+		row := []interface{}{track.ID}
 		if showUID {
-			row = append(row, uint64(t.uid))
+			row = append(row, uint64(track.Properties.UID))
 		}
-		row = append(row, trackType(t.tracktype), t.name, t.language, t.CodecID)
+		row = append(row, track.Type, track.Properties.TrackName, track.Properties.Language, track.Codec)
 
 		// Make default flag easier to see.
-		if t.flagDefault {
+		if track.Properties.DefaultTrack {
 			row = append(row, "<=====")
 		} else {
 			row = append(row, "")
 		}
 		tab.AppendRow(row)
 	}
-	fmt.Printf("%s\n", p.fname)
+	fmt.Printf("%s\n", mkv.FileName)
 	tab.Render()
 }
 
 // setdefault resets flagDefault on all subtitle tracks and sets it on the chosen track UID.
-func setdefault(p mkvParser, track int64, cmd runner) error {
+func setdefault(mkv matroska, tracknum int, cmd runner) error {
 	command := []string{
 		"mkvpropedit",
-		p.fname,
+		mkv.FileName,
 	}
 
-	for _, t := range p.tracks {
-		if t.tracktype == typeSubtitle {
-			command = append(command, "--edit", fmt.Sprintf("track:%d", t.number), "--set", "flag-default=0")
+	for _, track := range mkv.Tracks {
+		if track.Type == typeSubtitle {
+			// mkvpropedit uses base 1 for track (not zero).
+			command = append(command, "--edit", fmt.Sprintf("track:%d", track.ID+1), "--set", "flag-default=0")
 		}
 	}
 
 	if err := cmd.run(command[0], command[1:]...); err != nil {
 		return err
 	}
-	// Tracks selected by the user have offset = 0 so we make them offset = 1.
-	return adddefault(p.fname, track, cmd)
+	return adddefault(mkv, tracknum, cmd)
 }
 
-// trackByLanguage returns the track number (base 1) for the first track with
+// trackByLanguage returns the track number (base 0) for the first track with
 // one of the specified languages. The list of languages works as a priority,
 // meaning that languages=["eng","fra"] will first attempt to find a track with
 // the English language, and failing that, French. The special language
@@ -118,21 +101,21 @@ func setdefault(p mkvParser, track int64, cmd runner) error {
 // against the track name. If the selected language contains one of the strings
 // in this slice, it will be ignored. This is useful to select tracks by
 // language while ignoring 'Forced' tracks.
-func trackByLanguage(p mkvParser, languages []string, ignore []string) (int64, error) {
+func trackByLanguage(mkv matroska, languages []string, ignore []string) (int, error) {
 	for _, lang := range languages {
 		if lang == "default" {
 			lang = ""
 		}
-		for _, t := range p.tracks {
+		for _, track := range mkv.Tracks {
 			// Match subtitle and language.
-			if t.tracktype != typeSubtitle || t.language != lang {
+			if track.Type != typeSubtitle || track.Properties.Language != lang {
 				continue
 			}
 			// Make sure track should not be ignored.
-			if stringInSlice(t.name, ignore) {
+			if stringInSlice(track.Properties.TrackName, ignore) {
 				continue
 			}
-			return t.number, nil
+			return track.ID, nil
 		}
 	}
 	return 0, fmt.Errorf("no track with language(s): %s", strings.Join(languages, ","))
@@ -150,11 +133,19 @@ func stringInSlice(s string, slc []string) bool {
 }
 
 // extract extracts a given track into a file.
-func extract(handler mkvParser, track int64, cmd runner) (trackFileInfo, error) {
+func extract(mkv matroska, tracknum int, cmd runner) (trackFileInfo, error) {
 	// Fetch language for the track. Fail if track does not exist.
-	ti, err := trackInfo(handler, track)
-	if err != nil {
-		return trackFileInfo{}, err
+	ok := false
+	language := ""
+	for _, track := range mkv.Tracks {
+		if track.ID == tracknum {
+			ok = true
+			language = track.Properties.Language
+			break
+		}
+	}
+	if !ok {
+		return trackFileInfo{}, fmt.Errorf("track #%d not found in file %s", tracknum, mkv.FileName)
 	}
 
 	// Extract into a temporary file
@@ -165,17 +156,16 @@ func extract(handler mkvParser, track int64, cmd runner) (trackFileInfo, error) 
 	temp := tmpfile.Name()
 	_ = tmpfile.Close()
 
-	// Note: mkvextract uses 0 for the first track number.
 	command := []string{
 		"mkvextract",
-		handler.fname,
+		mkv.FileName,
 		"tracks",
-		fmt.Sprintf("%d:%s", track-1, temp),
+		fmt.Sprintf("%d:%s", tracknum, temp),
 	}
 	if err := cmd.run(command[0], command[1:]...); err != nil {
 		return trackFileInfo{}, err
 	}
-	return trackFileInfo{language: ti.language, fname: temp}, nil
+	return trackFileInfo{language: language, fname: temp}, nil
 }
 
 // submux merges an input file (usually an mkv file) and multiple subtitles into a
@@ -210,36 +200,14 @@ func remux(infiles []string, outfile string, cmd runner, subs bool) error {
 }
 
 // adddefault adds the default flag to a given track UID.
-func adddefault(mkvfile string, track int64, cmd runner) error {
-	return cmd.run("mkvpropedit", mkvfile, "--edit", fmt.Sprintf("track:%d", track), "--set", "flag-default=1")
-}
-
-// trackInfo returns the trackinfo for a given track number, or error if it does not exist.
-func trackInfo(handler mkvParser, track int64) (trackinfo, error) {
-	for _, v := range handler.tracks {
-		if v.number == track {
-			return v, nil
+func adddefault(mkv matroska, tracknum int, cmd runner) error {
+	for _, track := range mkv.Tracks {
+		if track.ID == tracknum {
+			// mkvpropedit uses base 1 for tracks.
+			return cmd.run("mkvpropedit", mkv.FileName, "--edit", fmt.Sprintf("track:%d", tracknum+1), "--set", "flag-default=1")
 		}
 	}
-	return trackinfo{}, fmt.Errorf("track number %d not found in file %s", track, handler.fname)
-}
-
-// trackType returns the string type of the track from the numeric track type value
-// or Unknown(value) if the type is not known.
-func trackType(t int64) string {
-	var ttypes = map[int64]string{
-		typeVideo:    "Video",
-		typeAudio:    "Audio",
-		typeComplex:  "Complex",
-		typeLogo:     "Logo",
-		typeSubtitle: "Subtitle",
-		typeButtons:  "Buttons",
-		typeControl:  "Control",
-	}
-	if v, ok := ttypes[t]; ok {
-		return v
-	}
-	return fmt.Sprintf("Unknown(%d)", t)
+	return fmt.Errorf("file %s does not contain track %d", mkv.FileName, tracknum)
 }
 
 // requirements returns nil if all required tools are installed and an error indicating
@@ -260,126 +228,31 @@ func requirements() error {
 	return nil
 }
 
-func main() {
-	var (
-		app    = kingpin.New("subtool", "Subtitle operations on matroska containers.")
-		dryrun = app.Flag("dry-run", "Dry-run mode (only show commands).").Short('n').Bool()
-
-		// merge
-		mergeCmd    = app.Command("merge", "Merge input tracks and files (subtitle/video/audio) into an output file.")
-		mergeOutput = mergeCmd.Flag("output", "Output file.").Required().Short('o').String()
-		mergeSubs   = mergeCmd.Flag("subs", "Copy subs from video file.").Default("true").Bool()
-		mergeInputs = mergeCmd.Arg("input-files", "Input files.").Required().Strings()
-
-		// only
-		onlyCmd       = app.Command("only", "Remove all subtitle tracks, except one.")
-		setOnlyTrack  = onlyCmd.Arg("track", "Track number to keep.").Required().Int64()
-		setOnlyInput  = onlyCmd.Arg("input", "Matroska Input file.").Required().String()
-		setOnlyOutput = onlyCmd.Arg("output", "Matroska Output file.").Required().String()
-
-		// remux
-		remuxCmd       = app.Command("remux", "Remux input file into an output file.")
-		remuxCmdInput  = remuxCmd.Arg("input-file", "Matroska Input file.").Required().String()
-		remuxCmdOutput = remuxCmd.Arg("output-file", "Matroska Output file.").Required().String()
-
-		// setdefault
-		setDefaultCmd   = app.Command("setdefault", "Set default subtitle tag on a track.")
-		setDefaultTrack = setDefaultCmd.Arg("track", "Track number to set as default.").Required().Int64()
-		setDefaultFiles = setDefaultCmd.Arg("mkvfile", "Matroska file.").Required().Strings()
-
-		// setdefaultbylanguage
-		setDefaultByLangCmd    = app.Command("setdefaultbylang", "Set default subtitle track by language.")
-		setDefaultByLangList   = setDefaultByLangCmd.Flag("lang", "Preferred languages (Use multiple times. Use 'default' for tracks with no language set.)").Required().Strings()
-		setDefaultByLangIgnore = setDefaultByLangCmd.Flag("ignore", "Ignore tracks with this string in the name (can be used multiple times.)").Strings()
-		setDefaultByLangFiles  = setDefaultByLangCmd.Arg("mkvfiles", "Matroska file(s).").Required().Strings()
-
-		// show
-		showCmd   = app.Command("show", "Show Information about file(s).")
-		showUID   = showCmd.Flag("uid", "Include track UIDs in the output.").Short('u').Bool()
-		showFiles = showCmd.Arg("input-files", "Matroska Input files.").Required().Strings()
-
-		// version
-		versionCmd = app.Command("version", "Show version information.")
-
-		// Command runner.
-		runCmd runCommand
-
-		// Dry-run command runner (only print commands).
-		fakeRunCmd fakeRunCommand
-
-		run runner
-	)
-
-	if err := requirements(); err != nil {
-		log.Fatalf("Requirements check: %v", err)
-	}
-
-	// Plain logs.
-	log.SetFlags(0)
-
-	k := kingpin.MustParse(app.Parse(os.Args[1:]))
-
-	// Run will resolve to a print-only version when dry-run is chosen.
-	run = runCmd
-	if *dryrun {
-		run = fakeRunCmd
-	}
-
-	var err error
-
-	switch k {
-	// Just print version number and exit.
-	case versionCmd.FullCommand():
-		fmt.Printf("Build Version: %s\n", BuildVersion)
-		os.Exit(0)
-
-	case mergeCmd.FullCommand():
-		err = remux(*mergeInputs, *mergeOutput, run, *mergeSubs)
-
-	case onlyCmd.FullCommand():
-		h := mustParseFile(*setOnlyInput)
-		var tfi trackFileInfo
-		tfi, err = extract(h, *setOnlyTrack, run)
-		if err != nil {
-			break
-		}
-		err = submux(*setOnlyInput, *setOnlyOutput, true, run, tfi)
-		// Attempt to remove even on error.
-		_ = os.Remove(tfi.fname)
-
-	case remuxCmd.FullCommand():
-		err = remux([]string{*remuxCmdInput}, *remuxCmdOutput, run, true)
-
-	case setDefaultCmd.FullCommand():
-		for _, f := range *setDefaultFiles {
-			h := mustParseFile(f)
-			err = setdefault(h, *setDefaultTrack, run)
-			if err != nil {
-				break
-			}
-		}
-
-	case setDefaultByLangCmd.FullCommand():
-		for _, f := range *setDefaultByLangFiles {
-			h := mustParseFile(f)
-
-			var track int64
-			track, err = trackByLanguage(h, *setDefaultByLangList, *setDefaultByLangIgnore)
-			if err != nil {
-				break
-			}
-			err = setdefault(h, track, run)
-		}
-
-	case showCmd.FullCommand():
-		for _, f := range *showFiles {
-			h := mustParseFile(f)
-			show(h, *showUID)
-		}
-	}
-
-	// Print error message, if any
+// mustParseFile parses the MKV file using the JSON output from mkmerge --identify.
+// error message in case of problems.
+func mustParseFile(fname string) matroska {
+	cmd := exec.Command("mkvmerge", "--identify", "-F", "json", fname)
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		log.Fatalf("Error during %s: %v", k, err)
+		log.Fatal(err)
 	}
+	cmd.Start()
+	/*
+		* buf, err := ioutil.ReadAll(stdout)
+		if err != nil {
+			log.Fatal(err)
+		}
+	*/
+	// Decode JSON.
+	jdec := json.NewDecoder(stdout)
+	var mkv matroska
+	if err := jdec.Decode(&mkv); err != nil {
+		log.Fatal(err)
+	}
+
+	if err := cmd.Wait(); err != nil {
+		log.Fatal(err)
+	}
+
+	return mkv
 }
