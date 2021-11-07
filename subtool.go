@@ -7,9 +7,11 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/jedib0t/go-pretty/table"
+	ParseTorrentName "github.com/middelink/go-parse-torrent-name"
 )
 
 // A friendly chat about Matroska metadata track numbers.
@@ -210,6 +212,67 @@ func adddefault(mkv matroska, tracknum int, cmd runner) error {
 	return fmt.Errorf("file %s does not contain track %d", mkv.FileName, tracknum)
 }
 
+// rename renames a file according to the "Scene" information in the file. A
+// fixed format is chosen here (but may be extended in the future to support
+// multiple formats).
+func rename(fname string, dryrun bool) error {
+	// Intended format is:
+	// Title (year) - Episode Title - (SnnEnn) [resolution]
+	// Certain elements are optional.
+
+	// Split the filename so we can work on parts separately.
+	dir, file := filepath.Split(fname)
+
+	parsed, err := ParseTorrentName.Parse(file)
+	if err != nil {
+		return err
+	}
+	// Title.
+	if parsed.Title == "" {
+		return fmt.Errorf("unable to parse title from file %s", fname)
+	}
+	var fileparts []string
+	fileparts = append(fileparts, properTitle(parsed.Title))
+
+	// Year (optional).
+	if parsed.Year != 0 {
+		fileparts = append(fileparts, fmt.Sprintf("(%d)", parsed.Year))
+	}
+
+	// Season and Episode (optional).
+	if parsed.Season != 0 || parsed.Episode != 0 {
+		fileparts = append(fileparts, fmt.Sprintf("- S%02.2dE%02.2d", parsed.Season, parsed.Episode))
+	}
+
+	// Resolution (optional).
+	if parsed.Resolution != "" {
+		fileparts = append(fileparts, fmt.Sprintf("[%s]", parsed.Resolution))
+	}
+
+	newfile := filepath.Join(dir, strings.Join(fileparts, " ")+"."+parsed.Container)
+
+	fmt.Printf("%s => %s\n", fname, newfile)
+	if dryrun {
+		return nil
+	}
+	return os.Rename(fname, newfile)
+}
+
+// properTitle performs correct capitalization on Titles, considering small
+// words on the English language (taken from Go Cookbook).
+func properTitle(input string) string {
+	words := strings.Fields(input)
+	smallwords := " a an on the to "
+	for index, word := range words {
+		if strings.Contains(smallwords, " "+word+" ") {
+			words[index] = word
+		} else {
+			words[index] = strings.Title(word)
+		}
+	}
+	return strings.Join(words, " ")
+}
+
 // requirements returns nil if all required tools are installed and an error indicating
 // the tools missing otherwise.
 func requirements() error {
@@ -237,12 +300,7 @@ func mustParseFile(fname string) matroska {
 		log.Fatal(err)
 	}
 	cmd.Start()
-	/*
-		* buf, err := ioutil.ReadAll(stdout)
-		if err != nil {
-			log.Fatal(err)
-		}
-	*/
+
 	// Decode JSON.
 	jdec := json.NewDecoder(stdout)
 	var mkv matroska

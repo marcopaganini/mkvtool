@@ -30,6 +30,10 @@ func main() {
 		remuxCmdInput  = remuxCmd.Arg("input-file", "Matroska Input file.").Required().String()
 		remuxCmdOutput = remuxCmd.Arg("output-file", "Matroska Output file.").Required().String()
 
+		// rename
+		renameCmd   = app.Command("rename", "Rename file based on scene information in filename.")
+		renameFiles = renameCmd.Arg("input-files", "Matroska file(s).").Required().Strings()
+
 		// setdefault
 		setDefaultCmd   = app.Command("setdefault", "Set default subtitle tag on a track.")
 		setDefaultTrack = setDefaultCmd.Arg("track", "Track number to set as default.").Required().Int()
@@ -97,6 +101,11 @@ func main() {
 
 	case remuxCmd.FullCommand():
 		err = remux([]string{*remuxCmdInput}, *remuxCmdOutput, run, true)
+
+	case renameCmd.FullCommand():
+		for _, f := range *renameFiles {
+			rename(f, *dryrun)
+		}
 
 	case setDefaultCmd.FullCommand():
 		for _, f := range *setDefaultFiles {
