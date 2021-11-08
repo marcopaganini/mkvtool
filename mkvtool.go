@@ -151,7 +151,7 @@ func extract(mkv matroska, tracknum int, cmd runner) (trackFileInfo, error) {
 	}
 
 	// Extract into a temporary file
-	tmpfile, err := ioutil.TempFile("", "subtool")
+	tmpfile, err := ioutil.TempFile("", "mkvtool")
 	if err != nil {
 		return trackFileInfo{}, err
 	}

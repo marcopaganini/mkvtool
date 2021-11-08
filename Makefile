@@ -1,6 +1,6 @@
 .PHONY: arch clean install
 
-bin := subtool
+bin := mkvtool
 bindir := /usr/local/bin
 archdir := arch
 src := $(wildcard *.go)
