@@ -10,7 +10,7 @@ import (
 
 func main() {
 	var (
-		app    = kingpin.New("subtool", "Subtitle operations on matroska containers.")
+		app    = kingpin.New("mkvtool", "Easy operations on matroska containers.")
 		dryrun = app.Flag("dry-run", "Dry-run mode (only show commands).").Short('n').Bool()
 
 		// merge

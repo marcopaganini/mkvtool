@@ -1,4 +1,4 @@
-module github.com/marcopaganini/subtool
+module github.com/marcopaganini/mkvtool
 
 go 1.16
 
