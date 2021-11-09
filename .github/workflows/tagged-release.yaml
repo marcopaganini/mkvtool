@@ -19,8 +19,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: "Build & test"
+      - name: Build
         run: |
+          apt-get update --yes
+          apt-get install pandoc --yes
           make arch
 
       - uses: "marvinpinto/action-automatic-releases@latest"
