@@ -21,8 +21,7 @@ jobs:
 
       - name: Build
         run: |
-          apt-get update --yes
-          apt-get install pandoc --yes
+          sudo apt-get install pandoc --yes
           make arch
 
       - uses: "marvinpinto/action-automatic-releases@latest"
