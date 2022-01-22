@@ -112,6 +112,7 @@ func main() {
 			mkv := mustParseFile(f)
 			err = setdefault(mkv, *setDefaultTrack, run)
 			if err != nil {
+				err = fmt.Errorf("(%s) %s", f, err)
 				break
 			}
 		}
@@ -122,9 +123,14 @@ func main() {
 			var track int
 			track, err = trackByLanguage(mkv, *setDefaultByLangList, *setDefaultByLangIgnore)
 			if err != nil {
+				err = fmt.Errorf("(%s) %s", f, err)
 				break
 			}
 			err = setdefault(mkv, track, run)
+			if err != nil {
+				err = fmt.Errorf("(%s) %s", f, err)
+				break
+			}
 		}
 
 	case showCmd.FullCommand():
