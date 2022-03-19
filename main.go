@@ -8,6 +8,20 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
+// readable returns a slice of readable files in the input slice.
+func readable(fnames []string) []string {
+	var ret []string
+
+	for _, f := range fnames {
+		if _, err := os.Stat(f); err == nil {
+			ret = append(ret, f)
+		} else {
+			log.Printf("Note: File %q is not readable. Skipping.", f)
+		}
+	}
+	return ret
+}
+
 func main() {
 	var (
 		app    = kingpin.New("mkvtool", "Easy operations on matroska containers.")
@@ -104,12 +118,12 @@ func main() {
 		err = remux([]string{*remuxCmdInput}, *remuxCmdOutput, run, true)
 
 	case renameCmd.FullCommand():
-		for _, f := range *renameFiles {
+		for _, f := range readable(*renameFiles) {
 			rename(f, *dryrun)
 		}
 
 	case setDefaultCmd.FullCommand():
-		for _, f := range *setDefaultFiles {
+		for _, f := range readable(*setDefaultFiles) {
 			mkv := mustParseFile(f)
 			err = setdefault(mkv, *setDefaultTrack, run)
 			if err != nil {
@@ -119,7 +133,7 @@ func main() {
 		}
 
 	case setDefaultByLangCmd.FullCommand():
-		for _, f := range *setDefaultByLangFiles {
+		for _, f := range readable(*setDefaultByLangFiles) {
 			mkv := mustParseFile(f)
 			var track int
 			track, err = trackByLanguage(mkv, *setDefaultByLangList, *setDefaultByLangIgnore)
@@ -135,7 +149,7 @@ func main() {
 		}
 
 	case showCmd.FullCommand():
-		for _, f := range *showFiles {
+		for _, f := range readable(*showFiles) {
 			mkv := mustParseFile(f)
 			show(mkv, *showUID)
 		}
