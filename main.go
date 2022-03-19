@@ -74,6 +74,7 @@ func main() {
 	// Run will resolve to a print-only version when dry-run is chosen.
 	run = runCmd
 	if *dryrun {
+		fmt.Println("Dry-run mode: Will not modify any files.")
 		run = fakeRunCmd
 	}
 

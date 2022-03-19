@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -294,23 +295,21 @@ func requirements() error {
 // mustParseFile parses the MKV file using the JSON output from mkmerge --identify.
 // error message in case of problems.
 func mustParseFile(fname string) matroska {
+	var stdout bytes.Buffer
+
 	cmd := exec.Command("mkvmerge", "--identify", "-F", "json", fname)
-	stdout, err := cmd.StdoutPipe()
+	cmd.Stdout = &stdout
+	err := cmd.Run()
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("mkvmerge failed: %v", err)
+		log.Fatalf("--- Output ---\n%s\n", stdout.String())
 	}
-	cmd.Start()
 
 	// Decode JSON.
-	jdec := json.NewDecoder(stdout)
 	var mkv matroska
-	if err := jdec.Decode(&mkv); err != nil {
-		log.Fatal(err)
+	err = json.Unmarshal(stdout.Bytes(), &mkv)
+	if err != nil {
+		log.Fatalf("Error decoding JSON output from mkvmerge: %v", err)
 	}
-
-	if err := cmd.Wait(); err != nil {
-		log.Fatal(err)
-	}
-
 	return mkv
 }
