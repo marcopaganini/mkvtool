@@ -115,7 +115,7 @@ This command only works in subtitle tracks for now.
 Useful command example:
 
 ```
-$ subtool setdefaultbylang --lang=eng --lang=default --lang=und --ignore="force" \*.mkv
+$ subtool setdefaultbylang --lang=eng --lang=default --lang=und --ignore="force" *.mkv
 ```
 
 This will set the first subtitle track in English (change to your favorite
