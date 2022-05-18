@@ -9,10 +9,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
+	"github.com/fatih/structs"
 	"github.com/jedib0t/go-pretty/table"
 	ParseTorrentName "github.com/middelink/go-parse-torrent-name"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 // A friendly chat about Matroska metadata track numbers.
@@ -68,7 +72,6 @@ func show(mkv matroska, showUID bool) {
 		}
 		tab.AppendRow(row)
 	}
-	fmt.Printf("%s\n", mkv.FileName)
 	tab.Render()
 }
 
@@ -186,7 +189,6 @@ func submux(infile, outfile string, nosubs bool, cmd runner, subs ...trackFileIn
 		cmdline = append(cmdline, sub.fname)
 	}
 	return cmd.run(cmdline[0], cmdline[1:]...)
-
 }
 
 // remux re-multiplexes the input file(s) into the output file. Setting subs to
@@ -213,44 +215,14 @@ func adddefault(mkv matroska, tracknum int, cmd runner) error {
 	return fmt.Errorf("file %s does not contain track %d", mkv.FileName, tracknum)
 }
 
-// rename renames a file according to the "Scene" information in the file. A
-// fixed format is chosen here (but may be extended in the future to support
-// multiple formats).
-func rename(fname string, dryrun bool) error {
-	// Intended format is:
-	// Title (year) - Episode Title - (SnnEnn) [resolution]
-	// Certain elements are optional.
-
-	// Split the filename so we can work on parts separately.
-	dir, file := filepath.Split(fname)
-
-	parsed, err := ParseTorrentName.Parse(file)
+// rename renames a file according to the "Scene" information in the file.
+func rename(mask, fname string, dryrun bool) error {
+	newname, err := format(fname, mask)
 	if err != nil {
 		return err
 	}
-	// Title.
-	if parsed.Title == "" {
-		return fmt.Errorf("unable to parse title from file %s", fname)
-	}
-	var fileparts []string
-	fileparts = append(fileparts, properTitle(parsed.Title))
-
-	// Year (optional).
-	if parsed.Year != 0 {
-		fileparts = append(fileparts, fmt.Sprintf("(%d)", parsed.Year))
-	}
-
-	// Season and Episode (optional).
-	if parsed.Season != 0 || parsed.Episode != 0 {
-		fileparts = append(fileparts, fmt.Sprintf("- S%02.2dE%02.2d", parsed.Season, parsed.Episode))
-	}
-
-	// Resolution (optional).
-	if parsed.Resolution != "" {
-		fileparts = append(fileparts, fmt.Sprintf("[%s]", parsed.Resolution))
-	}
-
-	newfile := filepath.Join(dir, strings.Join(fileparts, " ")+"."+parsed.Container)
+	dir, _ := filepath.Split(fname)
+	newfile := filepath.Join(dir, newname)
 
 	fmt.Printf("%s => %s\n", fname, newfile)
 	if dryrun {
@@ -259,19 +231,96 @@ func rename(fname string, dryrun bool) error {
 	return os.Rename(fname, newfile)
 }
 
-// properTitle performs correct capitalization on Titles, considering small
-// words on the English language (taken from Go Cookbook).
-func properTitle(input string) string {
-	words := strings.Fields(input)
-	smallwords := " a an on the to "
-	for index, word := range words {
-		if strings.Contains(smallwords, " "+word+" ") {
-			words[index] = word
-		} else {
-			words[index] = strings.Title(word)
-		}
+// format parses "Scene" information in the file and returns a string formatted
+// according to a formatting mask. The mask may contain the following tokens:
+//
+// %[format]{audio}
+// %[format]{codec}
+// %[format]{container} (this matches the original extension)
+// %[format]{episode}
+// %[format]{episodeName}
+// %[format]{excess}
+// %[format]{extended}
+// %[format]{garbage}
+// %[format]{group}
+// %[format]{hardcoded}
+// %[format]{language}
+// %[format]{proper}
+// %[format]{quality}
+// %[format]{region}
+// %[format]{repack}
+// %[format]{resolution}
+// %[format]{season}
+// %[format]{title}
+// %[format]{website}
+// %[format]{widescreen}
+// %[format]{year}
+//
+// Where "format" is a printf style format sizing specification. Complete
+// examples:
+// - %-02.2{season} - Season formatted as two characters, left padded wth zeroes.
+// - %-20{title} - Title truncated to 20 characters
+//
+// Anything not matching the %[format]{xxxx} construct will be interpreted literally.
+//
+// Formatting will fail if any element present in the mask cannot be resolved
+// (a typical example is asking for episode numbers for movies).
+func format(mask, fname string) (string, error) {
+	// Split the filename so we can work on parts separately.
+	_, file := filepath.Split(fname)
+
+	parsed, err := ParseTorrentName.Parse(file)
+	if err != nil {
+		return "", err
 	}
-	return strings.Join(words, " ")
+	fields := structs.Map(parsed)
+
+	// tags are formatted as %[format]{value}
+	re, err := regexp.Compile(`%((?:-?[\d]+)?(?:\.\d+)?){([a-z]+)}`)
+	if err != nil {
+		return "", err
+	}
+
+	var errlist []string
+
+	formatted := re.ReplaceAllStringFunc(mask, func(match string) string {
+		// Split matched tag into size formatting specifier and tag name.
+		// Tag must be capitalized to match the keys in the map.
+		e := re.FindStringSubmatch(match)
+		sizespec := e[1]
+		tag := cases.Title(language.English).String(e[2])
+
+		if i, ok := fields[tag]; ok {
+			switch t := i.(type) {
+			case string:
+				val := i.(string)
+				if val == "" {
+					break
+				}
+				// Special case for title: Capitalize
+				if tag == "Title" {
+					val = cases.Title(language.English).String(val)
+				}
+				return fmt.Sprintf("%"+sizespec+"s", val)
+			case int:
+				val := i.(int)
+				if val <= 0 {
+					break
+				}
+				return fmt.Sprintf("%"+sizespec+"d", i.(int))
+			default:
+				errlist = append(errlist, fmt.Sprintf("Internal error: Unknown type %T for %q", match, t))
+				return "*ERROR*"
+			}
+		}
+		errlist = append(errlist, fmt.Sprintf("Unable to parse data for %s", match))
+		return "*ERROR*"
+	})
+
+	if len(errlist) != 0 {
+		return "", fmt.Errorf("%s", strings.Join(errlist, ";"))
+	}
+	return formatted, nil
 }
 
 // requirements returns nil if all required tools are installed and an error indicating

@@ -39,14 +39,20 @@ func main() {
 		setOnlyInput  = onlyCmd.Arg("input", "Matroska Input file.").Required().String()
 		setOnlyOutput = onlyCmd.Arg("output", "Matroska Output file.").Required().String()
 
+		// print
+		printCmd    = app.Command("print", "Parse input filename and print scene information using a printf style mask.")
+		printFormat = printCmd.Flag("format", "Formatting mask").Short('f').Default("%{title}.mkv").String()
+		printFiles  = printCmd.Arg("input-files", "Matroska file(s).").Required().Strings()
+
 		// remux
 		remuxCmd       = app.Command("remux", "Remux input file into an output file.")
 		remuxCmdInput  = remuxCmd.Arg("input-file", "Matroska Input file.").Required().String()
 		remuxCmdOutput = remuxCmd.Arg("output-file", "Matroska Output file.").Required().String()
 
 		// rename
-		renameCmd   = app.Command("rename", "Rename file based on scene information in filename.")
-		renameFiles = renameCmd.Arg("input-files", "Matroska file(s).").Required().Strings()
+		renameCmd    = app.Command("rename", "Rename file based on scene information in filename.")
+		renameFormat = renameCmd.Flag("format", "Formatting mask").Short('f').Default("%{title}.%{container}").String()
+		renameFiles  = renameCmd.Arg("input-files", "Matroska file(s).").Required().Strings()
 
 		// setdefault
 		setDefaultCmd   = app.Command("setdefault", "Set default subtitle tag on a track.")
@@ -114,12 +120,22 @@ func main() {
 		// Attempt to remove even on error.
 		_ = os.Remove(tfi.fname)
 
+	case printCmd.FullCommand():
+		for _, fname := range *printFiles {
+			output, err := format(*printFormat, fname)
+			if err != nil {
+				log.Printf("%s: %v", fname, err)
+				continue
+			}
+			fmt.Println(output)
+		}
+
 	case remuxCmd.FullCommand():
 		err = remux([]string{*remuxCmdInput}, *remuxCmdOutput, run, true)
 
 	case renameCmd.FullCommand():
 		for _, f := range readable(*renameFiles) {
-			rename(f, *dryrun)
+			rename(*renameFormat, f, *dryrun)
 		}
 
 	case setDefaultCmd.FullCommand():
