@@ -98,25 +98,24 @@ func main() {
 		run = fakeRunCmd
 	}
 
-	var err error
+	var errors []error
 
 	switch k {
 	// Just print version number and exit.
 	case versionCmd.FullCommand():
 		fmt.Printf("Build Version: %s\n", BuildVersion)
-		os.Exit(0)
 
 	case mergeCmd.FullCommand():
-		err = remux(*mergeInputs, *mergeOutput, run, *mergeSubs)
+		errors = append(errors, remux(*mergeInputs, *mergeOutput, run, *mergeSubs))
 
 	case onlyCmd.FullCommand():
 		mkv := mustParseFile(*setOnlyInput)
-		var tfi trackFileInfo
-		tfi, err = extract(mkv, *setOnlyTrack, run)
+		tfi, err := extract(mkv, *setOnlyTrack, run)
 		if err != nil {
+			errors = append(errors, fmt.Errorf("%s: %v", *setOnlyInput, err))
 			break
 		}
-		err = submux(*setOnlyInput, *setOnlyOutput, true, run, tfi)
+		errors = append(errors, submux(*setOnlyInput, *setOnlyOutput, true, run, tfi))
 		// Attempt to remove even on error.
 		_ = os.Remove(tfi.fname)
 
@@ -124,43 +123,43 @@ func main() {
 		for _, fname := range *printFiles {
 			output, err := format(*printFormat, fname)
 			if err != nil {
-				log.Printf("%s: %v", fname, err)
+				errors = append(errors, fmt.Errorf("%s: %v", fname, err))
 				continue
 			}
 			fmt.Println(output)
 		}
 
 	case remuxCmd.FullCommand():
-		err = remux([]string{*remuxCmdInput}, *remuxCmdOutput, run, true)
+		errors = append(errors, remux([]string{*remuxCmdInput}, *remuxCmdOutput, run, true))
 
 	case renameCmd.FullCommand():
-		for _, f := range readable(*renameFiles) {
-			rename(*renameFormat, f, *dryrun)
+		for _, fname := range readable(*renameFiles) {
+			err := rename(*renameFormat, fname, *dryrun)
+			if err != nil {
+				errors = append(errors, fmt.Errorf("%s: %v", fname, err))
+			}
 		}
 
 	case setDefaultCmd.FullCommand():
-		for _, f := range readable(*setDefaultFiles) {
-			mkv := mustParseFile(f)
-			err = setdefault(mkv, *setDefaultTrack, run)
+		for _, fname := range readable(*setDefaultFiles) {
+			mkv := mustParseFile(fname)
+			err := setdefault(mkv, *setDefaultTrack, run)
 			if err != nil {
-				err = fmt.Errorf("(%s) %s", f, err)
-				break
+				errors = append(errors, fmt.Errorf("%s: %s", fname, err))
 			}
 		}
 
 	case setDefaultByLangCmd.FullCommand():
-		for _, f := range readable(*setDefaultByLangFiles) {
-			mkv := mustParseFile(f)
-			var track int
-			track, err = trackByLanguage(mkv, *setDefaultByLangList, *setDefaultByLangIgnore)
+		for _, fname := range readable(*setDefaultByLangFiles) {
+			mkv := mustParseFile(fname)
+			track, err := trackByLanguage(mkv, *setDefaultByLangList, *setDefaultByLangIgnore)
 			if err != nil {
-				err = fmt.Errorf("(%s) %s", f, err)
+				errors = append(errors, fmt.Errorf("%s: %s", fname, err))
 				break
 			}
 			err = setdefault(mkv, track, run)
 			if err != nil {
-				err = fmt.Errorf("(%s) %s", f, err)
-				break
+				errors = append(errors, fmt.Errorf("%s: %s", fname, err))
 			}
 		}
 
@@ -171,8 +170,15 @@ func main() {
 		}
 	}
 
-	// Print error message, if any
-	if err != nil {
-		log.Fatalf("Error during %s: %v", k, err)
+	// Print any errors found during processing. Exit accordindly.
+	var failed bool
+	for _, err := range errors {
+		if err != nil {
+			log.Println(err)
+			failed = true
+		}
+	}
+	if failed {
+		log.Fatalln("Execution failed")
 	}
 }
