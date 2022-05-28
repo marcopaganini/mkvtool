@@ -8,7 +8,7 @@ git_tag := $(shell git describe --always --tags)
 
 # Default target
 ${bin}: Makefile ${src}
-	go build -v -ldflags "-X main.BuildVersion=${git_tag}" -o "${bin}"
+	CGO_ENABLED=0 go build -v -ldflags "-X main.BuildVersion=${git_tag}" -o "${bin}"
 
 manpage:
 	pandoc --metadata title="${bin}(1)" -s --from gfm-smart --to man "docs/${bin}.1.md" -o "docs/${bin}.1"
