@@ -1,12 +1,18 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
 
-	"gopkg.in/alecthomas/kingpin.v2"
+	"github.com/urfave/cli/v2"
 )
+
+// Custom key for *runner in WithValue context.
+type key int
+
+const runnerKey = key(iota)
 
 // readable returns a slice of readable files in the input slice.
 func readable(fnames []string) []string {
@@ -24,62 +30,16 @@ func readable(fnames []string) []string {
 
 func main() {
 	var (
-		app    = kingpin.New("mkvtool", "Easy operations on matroska containers.")
-		dryrun = app.Flag("dry-run", "Dry-run mode (only show commands).").Short('n').Bool()
-
-		// merge
-		mergeCmd    = app.Command("merge", "Merge input tracks and files (subtitle/video/audio) into an output file.")
-		mergeOutput = mergeCmd.Flag("output", "Output file.").Required().Short('o').String()
-		mergeSubs   = mergeCmd.Flag("subs", "Copy subs from video file.").Default("true").Bool()
-		mergeInputs = mergeCmd.Arg("input-files", "Input files.").Required().Strings()
-
-		// only
-		onlyCmd       = app.Command("only", "Remove all subtitle tracks, except one.")
-		setOnlyTrack  = onlyCmd.Arg("track", "Track number to keep.").Required().Int()
-		setOnlyInput  = onlyCmd.Arg("input", "Matroska Input file.").Required().String()
-		setOnlyOutput = onlyCmd.Arg("output", "Matroska Output file.").Required().String()
-
-		// print
-		printCmd    = app.Command("print", "Parse input filename and print scene information using a printf style mask.")
-		printFormat = printCmd.Flag("format", "Formatting mask").Short('f').Default("%{title}.mkv").String()
-		printFiles  = printCmd.Arg("input-files", "Matroska file(s).").Required().Strings()
-
-		// remux
-		remuxCmd       = app.Command("remux", "Remux input file into an output file.")
-		remuxCmdInput  = remuxCmd.Arg("input-file", "Matroska Input file.").Required().String()
-		remuxCmdOutput = remuxCmd.Arg("output-file", "Matroska Output file.").Required().String()
-
-		// rename
-		renameCmd    = app.Command("rename", "Rename file based on scene information in filename.")
-		renameFormat = renameCmd.Flag("format", "Formatting mask").Short('f').Default("%{title}.%{container}").String()
-		renameFiles  = renameCmd.Arg("input-files", "Matroska file(s).").Required().Strings()
-
-		// setdefault
-		setDefaultCmd   = app.Command("setdefault", "Set default subtitle tag on a track.")
-		setDefaultTrack = setDefaultCmd.Arg("track", "Track number to set as default.").Required().Int()
-		setDefaultFiles = setDefaultCmd.Arg("mkvfile", "Matroska file.").Required().Strings()
-
-		// setdefaultbylanguage
-		setDefaultByLangCmd    = app.Command("setdefaultbylang", "Set default subtitle track by language.")
-		setDefaultByLangList   = setDefaultByLangCmd.Flag("lang", "Preferred languages (Use multiple times. Use 'default' for tracks with no language set.)").Required().Strings()
-		setDefaultByLangIgnore = setDefaultByLangCmd.Flag("ignore", "Ignore tracks with this string in the name (can be used multiple times.)").Strings()
-		setDefaultByLangFiles  = setDefaultByLangCmd.Arg("mkvfiles", "Matroska file(s).").Required().Strings()
-
-		// show
-		showCmd   = app.Command("show", "Show Information about file(s).")
-		showUID   = showCmd.Flag("uid", "Include track UIDs in the output.").Short('u').Bool()
-		showFiles = showCmd.Arg("input-files", "Matroska Input files.").Required().Strings()
-
-		// version
-		versionCmd = app.Command("version", "Show version information.")
-
 		// Command runner.
 		runCmd runCommand
 
 		// Dry-run command runner (only print commands).
 		fakeRunCmd fakeRunCommand
 
-		run runner
+		// This is overriden to fakeRunCmd when using dry-run.
+		run runner = runCmd
+
+		dryrun bool
 	)
 
 	if err := requirements(); err != nil {
@@ -89,96 +49,184 @@ func main() {
 	// Plain logs.
 	log.SetFlags(0)
 
-	k := kingpin.MustParse(app.Parse(os.Args[1:]))
+	app := &cli.App{
+		Name: "mkvtool",
+		Authors: []*cli.Author{
+			{
+				Name:  "Marco Paganini",
+				Email: "paganini@paganini.net",
+			},
+		},
+		Usage:   "Easy operations on Matroska containers.",
+		Version: BuildVersion,
 
-	// Run will resolve to a print-only version when dry-run is chosen.
-	run = runCmd
-	if *dryrun {
-		fmt.Println("Dry-run mode: Will not modify any files.")
-		run = fakeRunCmd
+		// Global Flags
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:        "dry-run",
+				Aliases:     []string{"n"},
+				Value:       false,
+				Usage:       "Dry-run mode (only show commands)",
+				Destination: &dryrun,
+			},
+		},
+		Action: func(c *cli.Context) error {
+			cli.ShowCommandHelp(c, "")
+			return nil
+		},
+		Before: func(c *cli.Context) error {
+			// Run will resolve to a print-only version when dry-run is chosen.
+			if dryrun {
+				fmt.Println("Dry-run mode: Will not modify any files.")
+				run = fakeRunCmd
+				c.Context = context.WithValue(c.Context, runnerKey, &run)
+			}
+			return nil
+		},
 	}
 
-	var errors []error
+	// Commands.
+	app.Commands = []*cli.Command{
+		// merge
+		{
+			Name:      "merge",
+			Usage:     "Merge input tracks and files (A/V/S) into an output file",
+			ArgsUsage: "FILE(s)...",
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:     "output",
+					Aliases:  []string{"o"},
+					Usage:    "Output file",
+					Required: true,
+				},
+				&cli.BoolFlag{
+					Name:  "subs",
+					Usage: "Copy subtitles from original video file",
+					Value: true,
+				},
+			},
+			Action: actionMerge,
+		},
 
-	switch k {
-	// Just print version number and exit.
-	case versionCmd.FullCommand():
-		fmt.Printf("Build Version: %s\n", BuildVersion)
+		// only
+		{
+			Name:      "only",
+			Usage:     "Remove all subtitle tracks, except one",
+			ArgsUsage: "input_file output_file",
+			Flags: []cli.Flag{
+				&cli.IntFlag{
+					Name:     "track",
+					Aliases:  []string{"t"},
+					Usage:    "Track number to keep",
+					Required: true,
+				},
+				&cli.BoolFlag{
+					Name:  "subs",
+					Usage: "Copy subtitles from original video file",
+					Value: true,
+				},
+			},
+			Action: actionOnly,
+		},
 
-	case mergeCmd.FullCommand():
-		errors = append(errors, remux(*mergeInputs, *mergeOutput, run, *mergeSubs))
+		// print
+		{
+			Name:      "print",
+			Usage:     "Parse input filename and print scene information using a printf style mask.",
+			ArgsUsage: "FILE(s)...",
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:    "format",
+					Aliases: []string{"f"},
+					Value:   "%{title}.mkv",
+					Usage:   "Formating mask",
+				},
+			},
+			Action: actionPrint,
+		},
 
-	case onlyCmd.FullCommand():
-		mkv := mustParseFile(*setOnlyInput)
-		tfi, err := extract(mkv, *setOnlyTrack, run)
-		if err != nil {
-			errors = append(errors, fmt.Errorf("%s: %v", *setOnlyInput, err))
-			break
-		}
-		errors = append(errors, submux(*setOnlyInput, *setOnlyOutput, true, run, tfi))
-		// Attempt to remove even on error.
-		_ = os.Remove(tfi.fname)
+		// remux
+		{
+			Name:      "remux",
+			Usage:     "Remux input file into an output file",
+			ArgsUsage: "input_file output_file",
+			Action:    actionRemux,
+		},
 
-	case printCmd.FullCommand():
-		for _, fname := range *printFiles {
-			output, err := format(*printFormat, fname)
-			if err != nil {
-				errors = append(errors, fmt.Errorf("%s: %v", fname, err))
-				continue
-			}
-			fmt.Println(output)
-		}
+		// rename
+		{
+			Name:      "rename",
+			Usage:     "Rename file based on scene information in filename.",
+			ArgsUsage: "FILE(s)...",
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:    "format",
+					Aliases: []string{"f"},
+					Value:   "%{title}.%{container}",
+					Usage:   "Formating mask",
+				},
+			},
+			Action: actionRename,
+		},
 
-	case remuxCmd.FullCommand():
-		errors = append(errors, remux([]string{*remuxCmdInput}, *remuxCmdOutput, run, true))
+		// setdefault
+		{
+			Name:      "setdefault",
+			Usage:     "Set the default subtitle tag on a track.",
+			ArgsUsage: "FILE(s)...",
+			Flags: []cli.Flag{
+				&cli.IntFlag{
+					Name:     "track",
+					Aliases:  []string{"t"},
+					Usage:    "Track Number",
+					Required: true,
+				},
+			},
+			Action: actionSetDefault,
+		},
 
-	case renameCmd.FullCommand():
-		for _, fname := range readable(*renameFiles) {
-			err := rename(*renameFormat, fname, *dryrun)
-			if err != nil {
-				errors = append(errors, fmt.Errorf("%s: %v", fname, err))
-			}
-		}
+		// setdefaultbylanguage
+		{
+			Name:      "setdefaultbylanguage",
+			Usage:     "Set default subtitle track by language.",
+			ArgsUsage: "FILE(s)...",
+			Flags: []cli.Flag{
+				&cli.StringSliceFlag{
+					Name:     "lang",
+					Aliases:  []string{"l"},
+					Usage:    "Preferred languages (Use multiple times. Use 'default' for tracks with no language set.)",
+					Required: true,
+				},
+				&cli.StringSliceFlag{
+					Name:    "ignore",
+					Aliases: []string{"i"},
+					Usage:   "Ignore tracks with this string in the name (can be used multiple times.)",
+				},
+			},
+			Action: actionSetDefaultByLang,
+		},
 
-	case setDefaultCmd.FullCommand():
-		for _, fname := range readable(*setDefaultFiles) {
-			mkv := mustParseFile(fname)
-			err := setdefault(mkv, *setDefaultTrack, run)
-			if err != nil {
-				errors = append(errors, fmt.Errorf("%s: %s", fname, err))
-			}
-		}
-
-	case setDefaultByLangCmd.FullCommand():
-		for _, fname := range readable(*setDefaultByLangFiles) {
-			mkv := mustParseFile(fname)
-			track, err := trackByLanguage(mkv, *setDefaultByLangList, *setDefaultByLangIgnore)
-			if err != nil {
-				errors = append(errors, fmt.Errorf("%s: %s", fname, err))
-				break
-			}
-			err = setdefault(mkv, track, run)
-			if err != nil {
-				errors = append(errors, fmt.Errorf("%s: %s", fname, err))
-			}
-		}
-
-	case showCmd.FullCommand():
-		for _, f := range readable(*showFiles) {
-			mkv := mustParseFile(f)
-			show(mkv, *showUID)
-		}
+		// show
+		{
+			Name:      "show",
+			Usage:     "Show information about files",
+			ArgsUsage: "FILE(s)...",
+			Flags: []cli.Flag{
+				&cli.BoolFlag{
+					Name:    "uid",
+					Aliases: []string{"u"},
+					Usage:   "Include track UIDs in the output",
+				},
+			},
+			Action: actionShow,
+		},
 	}
 
-	// Print any errors found during processing. Exit accordindly.
-	var failed bool
-	for _, err := range errors {
-		if err != nil {
-			log.Println(err)
-			failed = true
-		}
-	}
-	if failed {
-		log.Fatalln("Execution failed")
+	ctx := context.Background()
+	ctx = context.WithValue(ctx, runnerKey, &run)
+	err := app.RunContext(ctx, os.Args)
+
+	if err != nil {
+		log.Fatalln("Execution failed:", err)
 	}
 }
