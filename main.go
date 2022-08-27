@@ -185,9 +185,9 @@ func main() {
 			Action: actionSetDefault,
 		},
 
-		// setdefaultbylanguage
+		// setdefaultbylang
 		{
-			Name:      "setdefaultbylanguage",
+			Name:      "setdefaultbylang",
 			Usage:     "Set default subtitle track by language.",
 			ArgsUsage: "FILE(s)...",
 			Flags: []cli.Flag{
