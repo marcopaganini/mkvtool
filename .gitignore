@@ -16,5 +16,8 @@ mkvtool
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
+# "Compiled" manpages
+*.[1-9]
+
 # Directories
 arch

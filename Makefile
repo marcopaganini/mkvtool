@@ -2,6 +2,7 @@
 
 bin := mkvtool
 bindir := /usr/local/bin
+mandir := /usr/local/man/man1
 archdir := arch
 src := $(wildcard *.go)
 git_tag := $(shell git describe --always --tags)
@@ -18,8 +19,10 @@ clean:
 	rm -f "docs/${bin}.1"
 	rm -rf "${archdir}"
 
-install: ${bin}
+install: ${bin} ${manpage}
 	install -m 755 "${bin}" "${bindir}"
+	mkdir -p "${mandir}"
+	install -m 644 "docs/${bin}.1" "${mandir}"
 
 # Creates cross-compiled tarred versions (for releases).
 arch: Makefile ${src} manpage
