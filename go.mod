@@ -10,6 +10,5 @@ require (
 	github.com/middelink/go-parse-torrent-name v0.0.0-20190301154245-3ff4efacd4c4
 	github.com/stretchr/testify v1.7.0 // indirect
 	github.com/urfave/cli/v2 v2.8.1
-	golang.org/x/sys v0.0.0-20211106132015-ebca88c72f68 // indirect
-	golang.org/x/text v0.3.7
+	golang.org/x/text v0.3.8
 )
