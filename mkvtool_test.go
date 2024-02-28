@@ -1,6 +1,6 @@
 // This file is part of mkvtool (http://github.com/marcopaganini/mkvtool))
 // See instructions in the README.md file that accompanies this program.
-// (C) 2022 by Marco Paganini <paganini AT paganini DOT net>
+// (C) 2022-2024 by Marco Paganini <paganini AT paganini DOT net>
 
 package main
 
