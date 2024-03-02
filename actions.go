@@ -43,6 +43,27 @@ func checkMultiArgs(c *cli.Context) error {
 	return nil
 }
 
+// checkTrackType checks the validity of a track type. It returns an error if
+// the specified type is invalid, or the full name of the type
+// (audio/video/subtitles).
+func checkTrackType(t string) (string, error) {
+	tracktypes := map[string]string{
+		"a":         "audio",
+		"v":         "video",
+		"s":         "subtitles",
+		"aud":       "audio",
+		"vid":       "video",
+		"sub":       "subtitles",
+		"audio":     "audio",
+		"video":     "video",
+		"subtitles": "subtitles",
+	}
+	if name, ok := tracktypes[t]; ok {
+		return name, nil
+	}
+	return "", fmt.Errorf("invalid track type (use a, v, or s): %v", t)
+}
+
 func runnerFromContext(ctx context.Context) *runner {
 	ret, ok := ctx.Value(runnerKey).(*runner)
 	if !ok {
@@ -55,18 +76,46 @@ func actionMerge(c *cli.Context) error {
 	return remux(c.Args().Slice(), c.String("output"), *runnerFromContext(c.Context), c.Bool("subs"))
 }
 
-func actionOnly(c *cli.Context) error {
+// actionSingleTrack remuxes the file removing all tracks that don't match
+// "track" or "lang" of type "type". Track OR language must be set. The
+// track type will be checked for validity.
+func actionSingleTrack(c *cli.Context) error {
 	if err := checkTwoArgs(c); err != nil {
 		return err
 	}
 
+	hastrack := c.IsSet("track")
+	haslang := c.IsSet("lang")
+
+	// Must have track OR lang set. Not neither, not both.
+	if (!hastrack && !haslang) || (hastrack && haslang) {
+		return errors.New("must specify track (--track) OR language (--lang)")
+	}
+	// Check track type and set to full name (audio/video/subtitles).
+	tracktype, err := checkTrackType(c.String("type"))
+	if err != nil {
+		return err
+	}
+	c.Set("type", tracktype)
+
 	infile := c.Args().Get(0)
 	outfile := c.Args().Get(1)
-
 	run := *runnerFromContext(c.Context)
 
 	mkv := mustParseFile(infile)
-	tfi, err := extract(mkv, c.Int("track"), run)
+
+	// Select track by number or by language/type.
+	track := 0
+	if hastrack {
+		track = c.Int("track")
+	} else if haslang {
+		track, err = trackByLanguageAndType(mkv, c.StringSlice("lang"), tracktype, c.StringSlice("ignore"))
+		if err != nil {
+			return err
+		}
+	}
+
+	tfi, err := extract(mkv, track, run)
 	defer os.Remove(tfi.fname)
 	if err != nil {
 		return fmt.Errorf("%s: %v", infile, err)
@@ -150,7 +199,7 @@ func actionSetDefaultByLang(c *cli.Context) error {
 
 	for _, fname := range readable(c.Args().Slice()) {
 		mkv := mustParseFile(fname)
-		track, err := trackByLanguage(mkv, c.StringSlice("lang"), c.StringSlice("ignore"))
+		track, err := trackByLanguageAndType(mkv, c.StringSlice("lang"), typeSubtitles, c.StringSlice("ignore"))
 		if err != nil {
 			errmsgs = append(errmsgs, fmt.Sprintf("%s: %v", fname, err))
 			continue

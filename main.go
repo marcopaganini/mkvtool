@@ -112,16 +112,31 @@ func main() {
 			Action: actionMerge,
 		},
 
-		// only
+		// singletrack
 		{
-			Name:      "only",
-			Usage:     "Remove all subtitle tracks, except one",
+			Name:      "singletrack",
+			Usage:     "Remove all tracks of a given type, except one (choose by language or track #).",
 			ArgsUsage: "input_file output_file",
 			Flags: []cli.Flag{
+				&cli.StringSliceFlag{
+					Name:    "ignore",
+					Aliases: []string{"i"},
+					Usage:   "Ignore tracks with this string in the name (can be used multiple times.)",
+				},
+				&cli.StringSliceFlag{
+					Name:    "lang",
+					Aliases: []string{"l"},
+					Usage:   "Language of the track to keep",
+				},
 				&cli.IntFlag{
-					Name:     "track",
-					Aliases:  []string{"t"},
-					Usage:    "Track number to keep",
+					Name:    "track",
+					Aliases: []string{"t"},
+					Usage:   "Track number to keep",
+				},
+				&cli.StringFlag{
+					Name:     "type",
+					Aliases:  []string{"T"},
+					Usage:    "Track type (a=audio, v=video, s=subtitles)",
 					Required: true,
 				},
 				&cli.BoolFlag{
@@ -130,7 +145,7 @@ func main() {
 					Value: true,
 				},
 			},
-			Action: actionOnly,
+			Action: actionSingleTrack,
 		},
 
 		// print

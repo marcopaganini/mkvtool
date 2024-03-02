@@ -37,7 +37,9 @@ import (
 //
 // Track Types. See https://www.matroska.org/technical/specs/index.html
 const (
-	typeSubtitle = "subtitles"
+	typeAudio     = "audio"
+	typeVideo     = "video"
+	typeSubtitles = "subtitles"
 )
 
 // trackFileInfo holds information about an exported track file.
@@ -87,7 +89,7 @@ func setdefault(mkv matroska, tracknum int, cmd runner) error {
 	}
 
 	for _, track := range mkv.Tracks {
-		if track.Type == typeSubtitle {
+		if track.Type == typeSubtitles {
 			// mkvpropedit uses base 1 for track (not zero).
 			command = append(command, "--edit", fmt.Sprintf("track:%d", track.ID+1), "--set", "flag-default=0")
 		}
@@ -99,26 +101,27 @@ func setdefault(mkv matroska, tracknum int, cmd runner) error {
 	return adddefault(mkv, tracknum, cmd)
 }
 
-// trackByLanguage returns the track number (base 0) for the first track with
-// one of the specified languages. The list of languages works as a priority,
-// meaning that languages=["eng","fra"] will first attempt to find a track with
-// the English language, and failing that, French. The special language
-// "default" will cause tracks without a language code to be selected (Matroska
-// has the concept of a "default language", which is usually English -- tracks
-// with this language will not have a language code).
+// trackByLanguageAndType returns the track number (base 0) for the first track
+// with one of the specified languages matching the track type. The list of
+// languages works as a priority, meaning that languages=["eng","fra"] will
+// first attempt to find a track with the English language, and failing that,
+// French. The special language "default" will cause tracks without a language
+// code to be selected (Matroska has the concept of a "default language", which
+// is usually English -- tracks with this language will not have a language
+// code).
 //
 // The ignore slice contains a list of strings for case-insentive search
 // against the track name. If the selected language contains one of the strings
 // in this slice, it will be ignored. This is useful to select tracks by
 // language while ignoring 'Forced' tracks.
-func trackByLanguage(mkv matroska, languages []string, ignore []string) (int, error) {
+func trackByLanguageAndType(mkv matroska, languages []string, tracktype string, ignore []string) (int, error) {
 	for _, lang := range languages {
 		if lang == "default" {
 			lang = ""
 		}
 		for _, track := range mkv.Tracks {
 			// Match subtitle and language.
-			if track.Type != typeSubtitle || track.Properties.Language != lang {
+			if track.Type != tracktype || track.Properties.Language != lang {
 				continue
 			}
 			// Make sure track should not be ignored.
