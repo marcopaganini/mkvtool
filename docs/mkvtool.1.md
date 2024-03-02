@@ -51,18 +51,31 @@ output file.)
 
   **--subs**:  Copy subs from video file (use `--nosubs` to ignore all subs in the source file.)
 
-## **only \<track\> \<input-file\> \<output-file\>**
+## **remux [\<flags\>] \<input-file\> \<output-file\>**
 
-Copy the `<input-file>` MKV to `<output-file>` with all subtitle tasks removed,
-except `<track>`. This operation is useful when a file contains many subtitle
-tracks and, for some reason, you need a copy of the file with only one subtitle
-track.
+Remux the input file into the output file, filtering the tracks using the
+`--tracks` and `--lang` options.
 
-## **remux \<input-file\> \<output-file\>**
+For the `--lang` option, format the specifier as a comma separated list of
+`[type]:language` items, where type is "v" for video, "a" for audio, or "s" for
+subtitles and "language" is the three letter language code.
 
-Remux the original file `<input-file>` into `<output-file>`. This option can be
-useful to recover damaged MKV files or remux files using a newer version of
-`mkvtoolnix`.
+You can also use special identifiers for the languages:
+- **all**: copy all tracks having this type.
+- **none**: copy no tracks having this type.
+- **first**: copy only the first track having this type.
+
+If the lang specifier starts with a "!" the track will be excluded.
+
+By default, all tracks are copied (v:all,a:all,s:all), so you don't need to
+start the track list with "all".
+
+The `--ignore` flag supersedes any selection; tracks matching the ignore
+strings will be removed even if explicitly selected.
+
+  **-i, --ignore=IGNORE**: Ignore tracks with this string in the name (can be used multiple times.)
+  **-l, --lang=LANG**: Language selection by type. E.g: v:all,a:eng,!s:rus
+  **-t, --tracks=TRACKS**: Track number(s) to keep (comma separated list).
 
 ## **rename \<input-files\>...**
 
@@ -101,7 +114,7 @@ There's also the "default" meta-language, which matches the default
 language in the MKV file (normally, shown as an empty language when
 using the `show` option).
 
-For example, using `--lang=en --lang=es --lang=defaultj will cause the program
+For example, using `--lang=en --lang=es --lang=default` will cause the program
 to first attempt to find a subtitle track in the English language. If no
 subtitle tracks in English exist, it will attempt Spanish next. As a last
 resort, a subtitle track with the "default" language will be matched and set as
@@ -115,7 +128,7 @@ This command only works in subtitle tracks for now.
 Useful command example:
 
 ```
-$ subtool setdefaultbylang --lang=eng --lang=default --lang=und --ignore="force" *.mkv
+$ mkvtool setdefaultbylang --lang=eng --lang=default --lang=und --ignore="force" *.mkv
 ```
 
 This will set the first subtitle track in English (change to your favorite
@@ -141,5 +154,5 @@ Show version information.
 
 # Author
 
-- (C) 2021 by Marco Paganini <paganini at paganini dot net>
+- (C) 2021-2026 by Marco Paganini <paganini at paganini dot net>
 

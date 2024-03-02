@@ -19,7 +19,7 @@ type key int
 const runnerKey = key(iota)
 
 // readable returns a slice of readable files in the input slice.
-func readable(fnames []string) []string {
+var readable = func(fnames []string) []string {
 	var ret []string
 
 	for _, f := range fnames {
@@ -112,25 +112,29 @@ func main() {
 			Action: actionMerge,
 		},
 
-		// only
+		// remux
 		{
-			Name:      "only",
-			Usage:     "Remove all subtitle tracks, except one",
+			Name:      "remux",
+			Usage:     "Remux the input file into the output file, optionally filtering tracks.",
 			ArgsUsage: "input_file output_file",
 			Flags: []cli.Flag{
-				&cli.IntFlag{
-					Name:     "track",
-					Aliases:  []string{"t"},
-					Usage:    "Track number to keep",
-					Required: true,
+				&cli.StringSliceFlag{
+					Name:    "ignore",
+					Aliases: []string{"i"},
+					Usage:   "Ignore tracks with this string in the name (can be used multiple times.)",
 				},
-				&cli.BoolFlag{
-					Name:  "subs",
-					Usage: "Copy subtitles from original video file",
-					Value: true,
+				&cli.StringFlag{
+					Name:    "lang",
+					Aliases: []string{"l"},
+					Usage:   "Language selection by type. E.g: v:all,a:eng,!s:rus",
+				},
+				&cli.StringFlag{
+					Name:    "tracks",
+					Aliases: []string{"t"},
+					Usage:   "Track number(s) to keep (comma separated list)",
 				},
 			},
-			Action: actionOnly,
+			Action: actionRemux,
 		},
 
 		// print
@@ -147,14 +151,6 @@ func main() {
 				},
 			},
 			Action: actionPrint,
-		},
-
-		// remux
-		{
-			Name:      "remux",
-			Usage:     "Remux input file into an output file",
-			ArgsUsage: "input_file output_file",
-			Action:    actionRemux,
 		},
 
 		// rename

@@ -37,7 +37,9 @@ import (
 //
 // Track Types. See https://www.matroska.org/technical/specs/index.html
 const (
-	typeSubtitle = "subtitles"
+	typeAudio     = "audio"
+	typeVideo     = "video"
+	typeSubtitles = "subtitles"
 )
 
 // trackFileInfo holds information about an exported track file.
@@ -50,7 +52,7 @@ type trackFileInfo struct {
 var BuildVersion string
 
 // show lists all tracks in a file.
-func show(mkv matroska, showUID bool) {
+var show = func(mkv matroska, showUID bool) {
 	tab := table.NewWriter()
 	tab.SetOutputMirror(os.Stdout)
 	if showUID {
@@ -80,14 +82,14 @@ func show(mkv matroska, showUID bool) {
 }
 
 // setdefault resets flagDefault on all subtitle tracks and sets it on the chosen track UID.
-func setdefault(mkv matroska, tracknum int, cmd runner) error {
+var setdefault = func(mkv matroska, tracknum int, cmd runner) error {
 	command := []string{
 		"mkvpropedit",
 		mkv.FileName,
 	}
 
 	for _, track := range mkv.Tracks {
-		if track.Type == typeSubtitle {
+		if track.Type == typeSubtitles {
 			// mkvpropedit uses base 1 for track (not zero).
 			command = append(command, "--edit", fmt.Sprintf("track:%d", track.ID+1), "--set", "flag-default=0")
 		}
@@ -99,26 +101,27 @@ func setdefault(mkv matroska, tracknum int, cmd runner) error {
 	return adddefault(mkv, tracknum, cmd)
 }
 
-// trackByLanguage returns the track number (base 0) for the first track with
-// one of the specified languages. The list of languages works as a priority,
-// meaning that languages=["eng","fra"] will first attempt to find a track with
-// the English language, and failing that, French. The special language
-// "default" will cause tracks without a language code to be selected (Matroska
-// has the concept of a "default language", which is usually English -- tracks
-// with this language will not have a language code).
+// trackByLanguageAndType returns the track number (base 0) for the first track
+// with one of the specified languages matching the track type. The list of
+// languages works as a priority, meaning that languages=["eng","fra"] will
+// first attempt to find a track with the English language, and failing that,
+// French. The special language "default" will cause tracks without a language
+// code to be selected (Matroska has the concept of a "default language", which
+// is usually English -- tracks with this language will not have a language
+// code).
 //
 // The ignore slice contains a list of strings for case-insentive search
 // against the track name. If the selected language contains one of the strings
 // in this slice, it will be ignored. This is useful to select tracks by
 // language while ignoring 'Forced' tracks.
-func trackByLanguage(mkv matroska, languages []string, ignore []string) (int, error) {
+var trackByLanguageAndType = func(mkv matroska, languages []string, tracktype string, ignore []string) (int, error) {
 	for _, lang := range languages {
 		if lang == "default" {
 			lang = ""
 		}
 		for _, track := range mkv.Tracks {
 			// Match subtitle and language.
-			if track.Type != typeSubtitle || track.Properties.Language != lang {
+			if track.Type != tracktype || track.Properties.Language != lang {
 				continue
 			}
 			// Make sure track should not be ignored.
@@ -220,7 +223,7 @@ func adddefault(mkv matroska, tracknum int, cmd runner) error {
 }
 
 // rename renames a file according to the "Scene" information in the file.
-func rename(mask, fname string, dryrun bool) error {
+var rename = func(mask, fname string, dryrun bool) error {
 	newname, err := format(fname, mask)
 	if err != nil {
 		return err
@@ -269,7 +272,7 @@ func rename(mask, fname string, dryrun bool) error {
 //
 // Formatting will fail if any element present in the mask cannot be resolved
 // (a typical example is asking for episode numbers for movies).
-func format(mask, fname string) (string, error) {
+var format = func(mask, fname string) (string, error) {
 	// Split the filename so we can work on parts separately.
 	_, file := filepath.Split(fname)
 
@@ -347,7 +350,7 @@ func requirements() error {
 
 // mustParseFile parses the MKV file using the JSON output from mkmerge --identify.
 // error message in case of problems.
-func mustParseFile(fname string) matroska {
+var mustParseFile = func(fname string) matroska {
 	var stdout bytes.Buffer
 
 	cmd := exec.Command("mkvmerge", "--identify", "-F", "json", fname)
