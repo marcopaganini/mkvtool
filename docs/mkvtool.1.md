@@ -16,7 +16,7 @@ mkvtoolnix suite, such as mkvmerge, mkvpropedit, and others.
 
 # OPTIONS
 
-  **--help**: Show context-sensitive help (also try `--help-long` and `--help-man`).
+  **--help**: Show context-sensitive help.
 
   **-n**, **--dry-run**: Dry-run mode (only show commands or output.)
 
