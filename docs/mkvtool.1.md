@@ -4,7 +4,7 @@ mkvtool
 
 # SYNOPSIS
 
-  **mkvtool [options] command [ARGs...]**
+  **mkvtool [global options] command [command-options] [ARGs...]**
 
 # DESCRIPTION
 
@@ -14,13 +14,18 @@ This program provides a simpler front-end to common operations involving
 Matroska containers. It hides details and complexities from utilities in the
 mkvtoolnix suite, such as mkvmerge, mkvpropedit, and others.
 
-# OPTIONS
+# GLOBAL OPTIONS
 
-  **--help**: Show context-sensitive help.
+* **--help**: Show context-sensitive help.
 
-  **-n**, **--dry-run**: Dry-run mode (only show commands or output.)
+* **-n**, **--dry-run**: Dry-run mode (only show commands or output.)
 
 # COMMANDS
+
+Some commands have their own options, in addition to global options. Please
+keep in mind that global options must appear before the command and command
+options must appear after the command, and before any non-option (like bare
+filenames.)
 
 ## **help [COMMAND]**
 
