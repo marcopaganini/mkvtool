@@ -167,7 +167,10 @@ Shows a listing of all tracks in the file.
 
 Options:
 
-* **-u, --uid**: Include track UIDs in the output.
+* **-u, --uid**: Include track UIDs in the output (table output only).
+
+* **-J, --json**: Output information in JSON format (as an array). When used,
+  mkvtool prints full information about the files.
 
 ## **version**
 

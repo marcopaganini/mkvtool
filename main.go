@@ -6,7 +6,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
 
@@ -75,13 +74,12 @@ func main() {
 			},
 		},
 		Action: func(c *cli.Context) error {
-			cli.ShowCommandHelp(c, "")
-			return nil
+			return cli.ShowAppHelp(c)
 		},
 		Before: func(c *cli.Context) error {
 			// Run will resolve to a print-only version when dry-run is chosen.
 			if dryrun {
-				fmt.Println("Dry-run mode: Will not modify any files.")
+				log.Println("Dry-run mode: Will not modify any files.")
 				run = fakeRunCmd
 				c.Context = context.WithValue(c.Context, runnerKey, &run)
 			}
@@ -216,6 +214,11 @@ func main() {
 					Name:    "uid",
 					Aliases: []string{"u"},
 					Usage:   "Include track UIDs in the output",
+				},
+				&cli.BoolFlag{
+					Name:    "json",
+					Aliases: []string{"J"},
+					Usage:   "Output information in JSON format",
 				},
 			},
 			Action: actionShow,

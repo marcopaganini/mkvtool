@@ -5,8 +5,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
+	"os"
 	"reflect"
 	"testing"
 
@@ -908,5 +912,66 @@ func TestActionShow(t *testing.T) {
 	}
 	if !showCalled {
 		t.Errorf("show() was not called")
+	}
+}
+
+func TestActionShowJSON(t *testing.T) {
+	oldMustParseFile := mustParseFile
+	oldReadable := readable
+	oldStdout := os.Stdout
+	defer func() {
+		mustParseFile = oldMustParseFile
+		readable = oldReadable
+		os.Stdout = oldStdout
+	}()
+
+	readable = func(fnames []string) []string { return fnames }
+	mustParseFile = func(fname string) matroska {
+		return matroska{
+			FileName: fname,
+		}
+	}
+
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	mRunner := &mockRunner{}
+	var run runner = mRunner
+	ctx := context.WithValue(context.Background(), runnerKey, &run)
+
+	app := &cli.App{
+		Commands: []*cli.Command{
+			{
+				Name:   "show",
+				Action: actionShow,
+				Flags: []cli.Flag{
+					&cli.BoolFlag{Name: "json"},
+				},
+			},
+		},
+	}
+
+	err := app.RunContext(ctx, []string{"mkvtool", "show", "--json", "in1.mkv", "in2.mkv"})
+	w.Close()
+	if err != nil {
+		t.Errorf("actionShow() error = %v", err)
+	}
+
+	var buf bytes.Buffer
+	_, err = io.Copy(&buf, r)
+	if err != nil {
+		t.Errorf("io.Copy() error = %v", err)
+	}
+
+	var result []matroska
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Errorf("json.Unmarshal() error = %v, output: %s", err, buf.String())
+	}
+
+	if len(result) != 2 {
+		t.Errorf("Expected 2 files in JSON output, got %d", len(result))
+	}
+	if result[0].FileName != "in1.mkv" || result[1].FileName != "in2.mkv" {
+		t.Errorf("Unexpected filenames in JSON output: %v", result)
 	}
 }

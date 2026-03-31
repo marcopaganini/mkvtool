@@ -6,8 +6,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/urfave/cli/v2"
@@ -350,9 +352,25 @@ func actionShow(c *cli.Context) error {
 	if err := checkMultiArgs(c); err != nil {
 		return err
 	}
+
+	var allMKV []matroska
+	isJSON := c.Bool("json")
+
 	for _, fname := range readable(c.Args().Slice()) {
 		mkv := mustParseFile(fname)
-		show(mkv, c.Bool("uid"))
+		if isJSON {
+			allMKV = append(allMKV, mkv)
+		} else {
+			show(mkv, c.Bool("uid"))
+		}
+	}
+
+	if isJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(allMKV); err != nil {
+			return err
+		}
 	}
 	return nil
 }
