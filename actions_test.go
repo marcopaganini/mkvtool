@@ -123,6 +123,17 @@ func TestRunnerFromContext(t *testing.T) {
 }
 
 func TestActionMerge(t *testing.T) {
+	// Mock mustParseFile and show.
+	oldMustParseFile := mustParseFile
+	oldShow := show
+	defer func() {
+		mustParseFile = oldMustParseFile
+		show = oldShow
+	}()
+	mustParseFile = func(fname string) matroska { return matroska{} }
+	showCalled := false
+	show = func(mkv matroska, showUID bool) { showCalled = true }
+
 	// Mock remux? No, actionMerge calls remux (which is in mkvtool.go).
 	// remux is already tested in tracks_test.go, but here we test the action wrapper.
 	mRunner := &mockRunner{}
@@ -130,6 +141,10 @@ func TestActionMerge(t *testing.T) {
 	ctx := context.WithValue(context.Background(), runnerKey, &r)
 
 	app := &cli.App{
+		Flags: []cli.Flag{
+			&cli.BoolFlag{Name: "quiet", Aliases: []string{"q"}},
+			&cli.BoolFlag{Name: "json", Aliases: []string{"J"}},
+		},
 		Commands: []*cli.Command{
 			{
 				Name:   "merge",
@@ -147,16 +162,68 @@ func TestActionMerge(t *testing.T) {
 		t.Fatalf("actionMerge() error = %v", err)
 	}
 
+	if !showCalled {
+		t.Errorf("show() was not called")
+	}
+
 	expected := []string{"mkvmerge", "in1.mkv", "in2.mkv", "-o", "out.mkv"}
 	if !reflect.DeepEqual(mRunner.cmds[0], expected) {
 		t.Errorf("command = %v, want %v", mRunner.cmds[0], expected)
 	}
+
+	t.Run("Quiet", func(t *testing.T) {
+		mRunner.cmds = nil
+		showCalled = false
+		err := app.RunContext(ctx, []string{"mkvtool", "--quiet", "merge", "-o", "out.mkv", "in1.mkv", "in2.mkv"})
+		if err != nil {
+			t.Fatalf("actionMerge() error = %v", err)
+		}
+		if showCalled {
+			t.Errorf("show() was called with --quiet")
+		}
+	})
+
+	t.Run("JSON", func(t *testing.T) {
+		mRunner.cmds = nil
+		showCalled = false
+		oldStdout := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
+
+		err := app.RunContext(ctx, []string{"mkvtool", "--json", "merge", "-o", "out.mkv", "in1.mkv", "in2.mkv"})
+		w.Close()
+		os.Stdout = oldStdout
+
+		if err != nil {
+			t.Fatalf("actionMerge() error = %v", err)
+		}
+		if showCalled {
+			t.Errorf("show() was called with --json (should have used showJSON)")
+		}
+
+		var buf bytes.Buffer
+		io.Copy(&buf, r)
+		var result []matroska
+		if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+			t.Errorf("json.Unmarshal() error = %v, output: %s", err, buf.String())
+		}
+		if len(result) != 1 {
+			t.Errorf("expected 1 result, got %d", len(result))
+		}
+	})
 }
 
 func TestActionRemux(t *testing.T) {
 	// Save the original and restore it after the test.
 	oldMustParseFile := mustParseFile
-	defer func() { mustParseFile = oldMustParseFile }()
+	oldShow := show
+	defer func() {
+		mustParseFile = oldMustParseFile
+		show = oldShow
+	}()
+
+	showCalled := false
+	show = func(mkv matroska, showUID bool) { showCalled = true }
 
 	// Mock metadata for testing.
 	mockMetadata := matroska{}
@@ -596,12 +663,29 @@ func TestActionRemux(t *testing.T) {
 			// s: all(5,6) - all(5,6) = none
 			wantCmd: []string{"mkvmerge", "-o", "output.mkv", "-D", "-A", "-S", "input.mkv"},
 		},
+		{
+			name:    "Quiet",
+			args:    []string{"input.mkv", "output.mkv"},
+			flags:   map[string]interface{}{"quiet": true},
+			wantCmd: []string{"mkvmerge", "-o", "output.mkv", "-d", "0", "-a", "1,2,3,4", "-s", "5,6", "input.mkv"},
+		},
+		{
+			name:    "JSON",
+			args:    []string{"input.mkv", "output.mkv"},
+			flags:   map[string]interface{}{"json": true},
+			wantCmd: []string{"mkvmerge", "-o", "output.mkv", "-d", "0", "-a", "1,2,3,4", "-s", "5,6", "input.mkv"},
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			showCalled = false
 			mRunner := &mockRunner{}
 			app := &cli.App{
+				Flags: []cli.Flag{
+					&cli.BoolFlag{Name: "quiet", Aliases: []string{"q"}},
+					&cli.BoolFlag{Name: "json", Aliases: []string{"J"}},
+				},
 				Commands: []*cli.Command{
 					{
 						Name:   "remux",
@@ -619,8 +703,18 @@ func TestActionRemux(t *testing.T) {
 			var r runner = mRunner
 			ctx := context.WithValue(context.Background(), runnerKey, &r)
 
-			fullArgs := []string{"mkvtool", "remux"}
+			fullArgs := []string{"mkvtool"}
+			if q, ok := tc.flags["quiet"].(bool); ok && q {
+				fullArgs = append(fullArgs, "--quiet")
+			}
+			if j, ok := tc.flags["json"].(bool); ok && j {
+				fullArgs = append(fullArgs, "--json")
+			}
+			fullArgs = append(fullArgs, "remux")
 			for k, v := range tc.flags {
+				if k == "quiet" || k == "json" {
+					continue
+				}
 				switch val := v.(type) {
 				case string:
 					fullArgs = append(fullArgs, "--"+k, val)
@@ -636,13 +730,40 @@ func TestActionRemux(t *testing.T) {
 			}
 			fullArgs = append(fullArgs, tc.args...)
 
+			// Capture stdout for JSON test.
+			oldStdout := os.Stdout
+			pipeR, pipeW, _ := os.Pipe()
+			os.Stdout = pipeW
+
 			err := app.RunContext(ctx, fullArgs)
+			pipeW.Close()
+			os.Stdout = oldStdout
 
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("actionRemux() error = %v, wantErr %v", err, tc.wantErr)
 			}
 
 			if !tc.wantErr {
+				isJSON, _ := tc.flags["json"].(bool)
+				isQuiet, _ := tc.flags["quiet"].(bool)
+
+				wantShow := !isQuiet && !isJSON
+				if showCalled != wantShow {
+					t.Errorf("showCalled = %v, want %v", showCalled, wantShow)
+				}
+
+				if isJSON && !isQuiet {
+					var buf bytes.Buffer
+					io.Copy(&buf, pipeR)
+					var result []matroska
+					if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+						t.Errorf("json.Unmarshal() error = %v, output: %s", err, buf.String())
+					}
+					if len(result) != 1 {
+						t.Errorf("expected 1 result, got %d", len(result))
+					}
+				}
+
 				if len(mRunner.cmds) != 1 {
 					t.Fatalf("expected 1 command, got %d", len(mRunner.cmds))
 				}
@@ -940,18 +1061,18 @@ func TestActionShowJSON(t *testing.T) {
 	ctx := context.WithValue(context.Background(), runnerKey, &run)
 
 	app := &cli.App{
+		Flags: []cli.Flag{
+			&cli.BoolFlag{Name: "json"},
+		},
 		Commands: []*cli.Command{
 			{
 				Name:   "show",
 				Action: actionShow,
-				Flags: []cli.Flag{
-					&cli.BoolFlag{Name: "json"},
-				},
 			},
 		},
 	}
 
-	err := app.RunContext(ctx, []string{"mkvtool", "show", "--json", "in1.mkv", "in2.mkv"})
+	err := app.RunContext(ctx, []string{"mkvtool", "--json", "show", "in1.mkv", "in2.mkv"})
 	w.Close()
 	if err != nil {
 		t.Errorf("actionShow() error = %v", err)

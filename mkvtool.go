@@ -51,6 +51,13 @@ type trackFileInfo struct {
 // BuildVersion holds the git build number (set by make).
 var BuildVersion string
 
+// showJSON displays the track information in JSON format as an array.
+func showJSON(mkv []matroska) error {
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(mkv)
+}
+
 // show lists all tracks in a file.
 var show = func(mkv matroska, showUID bool) {
 	tab := table.NewWriter()

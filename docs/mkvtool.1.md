@@ -20,6 +20,10 @@ mkvtoolnix suite, such as mkvmerge, mkvpropedit, and others.
 
 * **-n**, **--dry-run**: Dry-run mode (only show commands or output.)
 
+* **-q**, **--quiet**: Reduce output, do not show results after merge and remux commands.
+
+* **-J**, **--json**: Output information in JSON format (as an array).
+
 # COMMANDS
 
 Some commands have their own options, in addition to global options. Please
@@ -42,6 +46,9 @@ files. A common use of this feature is to add a subtitle track to an existing
 file that contains only A/V tracks (E.g., to create a MKV file with the A/V
 tracks from an MP4 file and subtitles from a SRT file.)
 
+After a successful merge, `mkvtool` will show the tracks in the new file, unless
+the global `--quiet` flag is used.
+
 **Options**:
 
 * **--subs**: Copy all subtitles in `<input-file>` (default=true). Use
@@ -57,6 +64,9 @@ tracks from an MP4 file and subtitles from a SRT file.)
 ## **remux [options] INPUT_FILE OUTPUT_FILE**
 
 Remux the input file into the output file, with the option to filter tracks.
+
+After a successful remux, `mkvtool` will show the tracks in the new file, unless
+the global `--quiet` flag is used.
 
 **Options**:
 
@@ -173,9 +183,6 @@ Shows a listing of all tracks in the file.
 Options:
 
 * **-u, --uid**: Include track UIDs in the output (table output only).
-
-* **-J, --json**: Output information in JSON format (as an array). When used,
-  mkvtool prints full information about the files.
 
 ## **version**
 

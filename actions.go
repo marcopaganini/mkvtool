@@ -6,10 +6,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/urfave/cli/v2"
@@ -74,7 +72,18 @@ func runnerFromContext(ctx context.Context) *runner {
 }
 
 func actionMerge(c *cli.Context) error {
-	return remux(c.Args().Slice(), c.String("output"), *runnerFromContext(c.Context), c.Bool("subs"))
+	outfile := c.String("output")
+	if err := remux(c.Args().Slice(), outfile, *runnerFromContext(c.Context), c.Bool("subs")); err != nil {
+		return err
+	}
+
+	if !c.Bool("quiet") {
+		if c.Bool("json") {
+			return showJSON([]matroska{mustParseFile(outfile)})
+		}
+		show(mustParseFile(outfile), false)
+	}
+	return nil
 }
 
 // actionRemux remuxes the input file into the output file, filtering the
@@ -268,7 +277,17 @@ func actionRemux(c *cli.Context) error {
 
 	cmdline = append(cmdline, infile)
 
-	return run.run(cmdline[0], cmdline[1:]...)
+	if err := run.run(cmdline[0], cmdline[1:]...); err != nil {
+		return err
+	}
+
+	if !c.Bool("quiet") {
+		if c.Bool("json") {
+			return showJSON([]matroska{mustParseFile(outfile)})
+		}
+		show(mustParseFile(outfile), false)
+	}
+	return nil
 }
 
 func actionPrint(c *cli.Context) error {
@@ -366,11 +385,7 @@ func actionShow(c *cli.Context) error {
 	}
 
 	if isJSON {
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-		if err := enc.Encode(allMKV); err != nil {
-			return err
-		}
+		return showJSON(allMKV)
 	}
 	return nil
 }

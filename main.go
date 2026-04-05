@@ -72,6 +72,16 @@ func main() {
 				Usage:       "Dry-run mode (only show commands)",
 				Destination: &dryrun,
 			},
+			&cli.BoolFlag{
+				Name:    "quiet",
+				Aliases: []string{"q"},
+				Usage:   "Quiet mode",
+			},
+			&cli.BoolFlag{
+				Name:    "json",
+				Aliases: []string{"J"},
+				Usage:   "Output information in JSON format",
+			},
 		},
 		Action: func(c *cli.Context) error {
 			return cli.ShowAppHelp(c)
@@ -214,11 +224,6 @@ func main() {
 					Name:    "uid",
 					Aliases: []string{"u"},
 					Usage:   "Include track UIDs in the output",
-				},
-				&cli.BoolFlag{
-					Name:    "json",
-					Aliases: []string{"J"},
-					Usage:   "Output information in JSON format",
 				},
 			},
 			Action: actionShow,
