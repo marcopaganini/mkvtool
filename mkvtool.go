@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
@@ -41,12 +40,6 @@ const (
 	typeVideo     = "video"
 	typeSubtitles = "subtitles"
 )
-
-// trackFileInfo holds information about an exported track file.
-type trackFileInfo struct {
-	language string
-	fname    string
-}
 
 // BuildVersion holds the git build number (set by make).
 var BuildVersion string
@@ -150,59 +143,6 @@ func stringInSlice(s string, slc []string) bool {
 		}
 	}
 	return false
-}
-
-// extract extracts a given track into a file.
-func extract(mkv matroska, tracknum int, cmd runner) (trackFileInfo, error) {
-	// Fetch language for the track. Fail if track does not exist.
-	ok := false
-	language := ""
-	for _, track := range mkv.Tracks {
-		if track.ID == tracknum {
-			ok = true
-			language = track.Properties.Language
-			break
-		}
-	}
-	if !ok {
-		return trackFileInfo{}, fmt.Errorf("track #%d not found in file %s", tracknum, mkv.FileName)
-	}
-
-	// Extract into a temporary file
-	tmpfile, err := ioutil.TempFile("", "mkvtool")
-	if err != nil {
-		return trackFileInfo{}, err
-	}
-	temp := tmpfile.Name()
-	_ = tmpfile.Close()
-
-	command := []string{
-		"mkvextract",
-		mkv.FileName,
-		"tracks",
-		fmt.Sprintf("%d:%s", tracknum, temp),
-	}
-	if err := cmd.run(command[0], command[1:]...); err != nil {
-		return trackFileInfo{}, err
-	}
-	return trackFileInfo{language: language, fname: temp}, nil
-}
-
-// submux merges an input file (usually an mkv file) and multiple subtitles into a
-// destination, optionally removing all other subtitles from the source.
-func submux(infile, outfile string, nosubs bool, cmd runner, subs ...trackFileInfo) error {
-	cmdline := []string{"mkvmerge", "-o", outfile}
-
-	if nosubs {
-		cmdline = append(cmdline, "-S")
-	}
-	cmdline = append(cmdline, infile)
-
-	for _, sub := range subs {
-		cmdline = append(cmdline, "--language", fmt.Sprintf("0:%s", sub.language))
-		cmdline = append(cmdline, sub.fname)
-	}
-	return cmd.run(cmdline[0], cmdline[1:]...)
 }
 
 // remux re-multiplexes the input file(s) into the output file. Setting subs to
